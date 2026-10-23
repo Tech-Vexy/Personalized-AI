@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Message, { type WireMessage } from "./Message";
+import type { EnvelopeSourceView } from "./ThoughtSignature";
 
 type ChatResponse = {
   sessionId: number;
   userMessage: WireMessage;
   assistantMessage: WireMessage;
+  memoryUsed?: boolean;
+  sources?: EnvelopeSourceView[];
 };
 
 export default function ChatView() {
@@ -67,7 +70,11 @@ export default function ChatView() {
         setItems((prev) => [
           ...prev.filter((m) => m.id !== localId),
           userMessage,
-          assistantMessage,
+          {
+            ...assistantMessage,
+            memoryUsed: data.memoryUsed,
+            sources: data.sources,
+          },
         ]);
         setPending(null);
       } catch (err) {

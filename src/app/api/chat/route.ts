@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { messages, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
 import { answerWithEnvelope, type ChatMessage } from "@/lib/llm";
+import { recallMemories, extractMemories } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,9 +29,10 @@ function toWireMessage(row: MessageRow) {
 }
 
 /**
- * One chat turn. Slice 2 runs the loop without recall — persistence only.
- * persist user message → prompt from the session's recent messages →
- * envelope → persist answer → return JSON.
+ * One chat turn: persist user message → recall long-term memories →
+ * prompt (history + recalled memories) → envelope → persist answer →
+ * fire-and-forget memory extraction → return JSON.
+ * The surface is stateless; sessions are internal kernel structure.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -71,6 +73,16 @@ export async function POST(req: Request) {
     .slice(-HISTORY_WINDOW)
     .map((m) => ({ role: m.role, content: m.content }));
 
+  // Long-term memory: keyword recall over the FTS index, relevance-floored,
+  // with session provenance. The current session is excluded — its content
+  // is already in the history window above.
+  const recalled = recallMemories(text, active.id);
+  const memoryBlock = recalled.length
+    ? `\n\nLong-term memories from earlier sessions with this user, most relevant first (format: [session #id, date] content):\n${recalled
+        .map((r) => `- [session #${r.sessionId}, ${r.date}] ${r.content}`)
+        .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one you used in sources as {"session_id": <number>, "date": "<YYYY-MM-DD>", "taken": "<what you took>", "why_now": "<why it matters here>"}. If none of them bear on this message, ignore them and keep memory_used false.`
+    : "";
+
   // Persist the user message. A failed turn appends nothing else — the
   // pending message lives in client state until an answer exists.
   const userRow = db
@@ -84,7 +96,7 @@ export async function POST(req: Request) {
 
   try {
     const { envelope } = await answerWithEnvelope({
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + memoryBlock,
       history,
       userMessage: text,
     });
@@ -97,6 +109,20 @@ export async function POST(req: Request) {
       return Response.json({ error: "could not save the reply" }, { status: 500 });
     }
     db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, active.id)).run();
+    // Fire-and-forget extraction: the answer is already saved and returned,
+    // so a failed or slow distillation never blocks or fails the user-facing
+    // turn (spec.md > Important Failure Modes). Local PoC: the floating
+    // promise completes in the long-running dev server process.
+    void extractMemories({
+      sessionId: active.id,
+      userMessage: text,
+      assistantReply: envelope.answer,
+    }).catch((err: unknown) => {
+      console.error(
+        "[memory] extraction skipped:",
+        err instanceof Error ? err.message : err,
+      );
+    });
     return Response.json({
       sessionId: active.id,
       userMessage: toWireMessage(userRow),

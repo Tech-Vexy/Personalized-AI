@@ -1,6 +1,7 @@
 "use client";
 
 import Markdown from "react-markdown";
+import ThoughtSignature, { type EnvelopeSourceView } from "./ThoughtSignature";
 
 /** The wire shape shared by /api/chat and /api/sessions. */
 export type WireMessage = {
@@ -9,6 +10,9 @@ export type WireMessage = {
   content: string;
   createdAt: string;
   failed?: boolean;
+  /** Present on assistant replies when the AI drew on long-term memory. */
+  memoryUsed?: boolean;
+  sources?: EnvelopeSourceView[];
 };
 
 export default function Message({
@@ -39,8 +43,11 @@ export default function Message({
       </div>
     );
   }
+  const showPanel =
+    message.memoryUsed === true && !!message.sources && message.sources.length > 0;
   return (
     <div className="msg msg-assistant">
+      {showPanel && <ThoughtSignature sources={message.sources!} />}
       <div className="markdown">
         <Markdown>{message.content}</Markdown>
       </div>

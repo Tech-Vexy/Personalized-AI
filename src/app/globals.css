@@ -84,7 +84,29 @@ body {
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
-.msg-assistant { align-self: stretch; }
+.msg-assistant { align-self: stretch; display: flex; flex-direction: column; gap: 10px; }
+
+/* --- thought-signature panel — receipts, not clutter ---------------------- */
+.thought-sig {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  overflow: hidden;
+}
+.thought-sig > button {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 12px;
+  background: none; border: none; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.thought-sig > button:hover { color: var(--ink); }
+.thought-sig:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.thought-sig-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.thought-sig-chev { margin-left: auto; font-size: 15px; line-height: 1; }
+.thought-sig ul { margin: 0; padding: 2px 14px 10px 26px; }
+.thought-sig li { margin: 6px 0; line-height: 1.55; overflow-wrap: anywhere; }
 
 .msg-failed {
   margin-top: 8px;
