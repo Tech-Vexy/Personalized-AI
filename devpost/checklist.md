@@ -19,7 +19,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Put your NVIDIA API key in `.env.local` (I'll show you exactly where and how), run the probe with me, and read the answer it prints — confirm the tone reads like a thinking companion and the latency feels acceptable to you.
   Commit: `Scaffold app and prove NIM envelope call`
 
-- [ ] **2. You can chat — and the conversation survives a restart**
+- [x] **2. You can chat — and the conversation survives a restart**
   Becomes usable: Open the app, type a message, get a markdown reply in the calm Gemini/Claude-like surface; close everything, reopen, and the conversation is still there. No memory intelligence yet — persistence only.
   Why now: First end-to-end usable behavior: UI → route → SQLite → model → render, all in one slice (bootstrapping is done). Persistence is inherent from the first turn, and the early feedback checkpoint right after this slice can still shape how everything later looks and feels.
   PRD ref: `prd.md > The Core Journey` (steps 3, 8), `prd.md > Look and Feel`
