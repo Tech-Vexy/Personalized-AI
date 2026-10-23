@@ -9,11 +9,11 @@ status: approved
 
 Everything runs on your machine as **one program**: a Next.js app started with `npm run dev` and opened in a browser. It has three parts.
 
-**The interface** is the browser window: the chat, the history drawer behind the hamburger, the mic button that uses your device's built-in speech-to-text, and the collapsible "thought signature" panels that show which past session an answer pulled from. Dark and light both ship; the app follows your device's theme automatically.
+**The interface** is the browser window: the chat, the mic button that uses your device's built-in speech-to-text, and the collapsible "thought signature" panels that show which past session an answer pulled from. The surface is **stateless** — every launch opens a clean conversation; nothing old is ever rendered back, because history belongs to the kernel, not the app. Dark and light both ship; the app follows your device's theme automatically.
 
 **The memory** is a single SQLite file on disk. Every conversation is a session of messages. Alongside them lives the long-term memory: short distilled entries ("user is building X", "user asked for a CV on Oct 2"), each tagged with the session it came from. SQLite's full-text search (FTS5) indexes those entries — that is what makes "older ground resurfaces by keyword" work with no vector database and no second service.
 
-**The brain** is one module that talks to `z-ai/glm-5.3-flash` on NVIDIA NIM, an OpenAI-compatible endpoint. Every turn runs the same loop: your message arrives → keyword search pulls candidate memories → the ones that clear a relevance floor are injected into the prompt → GLM answers in a structured envelope saying *what it answered*, *whether it used memory*, and *which sessions it pulled from* → the exchange is saved, and a small second call distills anything worth keeping into long-term memory. The AI's judgment about showing its work is just a field in that envelope: routine answers say "nothing recalled" and render clean; notable ones carry the panel.
+**The brain** is one module that talks to `gemini-3.8-flash` on Google AI through its OpenAI-compatible endpoint. Every turn runs the same loop: your message arrives → keyword search pulls candidate memories → the ones that clear a relevance floor are injected into the prompt → Gemini answers in a structured envelope saying *what it answered*, *whether it used memory*, and *which sessions it pulled from* → the exchange is saved, and a small second call distills anything worth keeping into long-term memory. The AI's judgment about showing its work is just a field in that envelope: routine answers say "nothing recalled" and render clean; notable ones carry the panel.
 
 Why this shape: it proves the kernel — unified memory with judgment — with exactly one external service, one process, and one data file. Token streaming, embeddings, and *custom* voice (Cartesia) were deferred deliberately — the built-in mic stays. See *What Was Simplified and Why*.
 
@@ -22,12 +22,12 @@ Why this shape: it proves the kernel — unified memory with judgment — with e
 PRD ref: `prd.md > The Core Journey`.
 
 1. **First launch.** `GetStarted.tsx` shows what the app does; one button flows onward. No auth code exists anywhere.
-2. **Onboarding.** The same chat pipeline runs with an onboarding system prompt: GLM asks a few facts one at a time; each answer is saved as a message *and* distilled into the first long-term memories; a `profile.onboarding_done` flag flips when the AI has what it needs.
-3. **Main screen.** `ChatView.tsx` + `Message.tsx` render the airy conversation; a **New session** button starts a fresh thread; the mic fills the input with editable text via the Web Speech API; the hamburger toggles `HistoryDrawer.tsx`.
-4. **"Let's continue."** On a fresh session, the chat route detects the intent: it fetches the last session's tail and memories, and prompts GLM for "yesterday we looked at…, today…". With no prior sessions, a prompt rule forces a clarifying question — never a fabricated recap.
+2. **Onboarding.** The same chat pipeline runs with an onboarding system prompt: Gemini asks a few facts one at a time; each answer is saved as a message *and* distilled into the first long-term memories; a `profile.onboarding_done` flag flips when the AI has what it needs.
+3. **Main screen.** `ChatView.tsx` + `Message.tsx` render the airy conversation — and nothing else. The surface is stateless: every launch starts a fresh, empty conversation (a new internal session begins with its first message), and the mic fills the input with editable text via the Web Speech API. No hamburger, no history list, no New-session button.
+4. **"Let's continue."** The chat route detects the phrase in a fresh session's first message: it fetches the last session's tail and memories, and prompts Gemini for "yesterday we looked at…, today…". With no prior sessions, a prompt rule forces a clarifying question — never a fabricated recap.
 5. **Talking normally.** Every message triggers recall (FTS5 → relevance floor → prompt injection). When the envelope's `memory_used` is true, `ThoughtSignature.tsx` renders the source panel above the answer; otherwise nothing appears.
-6. **Asking twice.** Recall also searches *messages* for prior requests; the system prompt instructs GLM to point back to the original conversation instead of regenerating when a match is strong.
-7. **History view.** `/api/sessions` lists all sessions; opening one loads its messages. History and recall read the same SQLite file — two lenses on one store.
+6. **Asking twice.** Recall also searches *messages* for prior requests; the system prompt instructs Gemini to point back to the original conversation instead of regenerating when a match is strong.
+7. **Stateless surface.** The app renders no history. Sessions exist only inside the kernel — `/api/sessions` stays server-side for continuity and provenance, never as a user-facing list. Asking the AI is the only way to reach the past.
 8. **Success.** The three demo beats in `prd.md > The Core Journey` step 8 are the build's acceptance test.
 
 ## Stack
@@ -38,18 +38,18 @@ PRD ref: `prd.md > The Core Journey`.
 | Database | **SQLite via `better-sqlite3`** | On-device file, zero infrastructure — your lean, confirmed. |
 | ORM | **Drizzle ORM** | Typed schema, light, pairs with better-sqlite3; resolves your "ORM depends on framework" note. Derived from the stack choice. |
 | Keyword recall | **SQLite FTS5** | Your PRD says keyword-based; FTS5 ships inside SQLite — no extra service. Upgrade path: embeddings, only if the quality bar is missed. |
-| LLM | **`z-ai/glm-5.3-flash` on NVIDIA NIM** — `openai` npm SDK with a custom `baseURL` | Your pick, verified in NIM's model list. One module owns every call, so provider swaps stay one-file changes. |
+| LLM | **`gemini-3.8-flash` on Google AI** — `openai` npm SDK with the Gemini OpenAI-compatible `baseURL` | Your pick (2026-10-23), replacing NIM GLM-5.3-flash whose 44–107s silent waits read as "never responds." Model verified in Google's docs; one module owns every call, so provider swaps stay one-file changes. |
 | Markdown rendering | `react-markdown` | Airy long responses per `prd.md > Look and Feel`. |
 | Styling | Plain CSS custom properties + `prefers-color-scheme` | Auto dark/light tokens; no CSS framework to fight. |
 
-Unverified — check at build start: NIM free-credit/rate-limit situation and the exact `baseURL` constant in current docs.
+Verified at the swap (2026-10-23): model id and OpenAI-compatible base URL confirmed in Google's docs (docs updated 2026-10-22); latency and free-tier RPM/RPD measured live at probe time.
 
 ## Where It Runs and How Someone Tries It
 
-- **Runtime:** local process, Node 20+. `npm install` → put `NVIDIA_API_KEY=…` in `.env.local` → `npm run dev` → open **http://localhost:3000 in Chrome or Edge** (Web Speech API needs Chromium; other browsers work except dictation).
+- **Runtime:** local process, Node 20+. `npm install` → put `GOOGLE_API_KEY=…` in `.env.local` → `npm run dev` → open **http://localhost:3000 in Chrome or Edge** (Web Speech API needs Chromium; other browsers work except dictation).
 - **Data:** `data/memory.db` (gitignored). Delete the file to reset to first launch.
 - **Demo:** recorded locally; submission = short demo video + public GitHub repository. Deployment optional per scope and **not planned for v1**.
-- **Try-it path:** fresh clone → install → key → `npm run dev` → Get Started → onboarding → chat → new session → "let's continue".
+- **Try-it path:** fresh clone → install → key → `npm run dev` → Get Started → onboarding → chat → relaunch → "let's continue".
 
 ## Look and Feel
 
@@ -62,19 +62,19 @@ Static intro; one button flows onward. No signup/login exists.
 PRD ref: `prd.md > The Core Journey` step 1, `prd.md > Screens and Layout`.
 
 ### Onboarding conversation — `src/components/Onboarding.tsx`
-Reuses the chat route with an onboarding system prompt; GLM asks a few facts one at a time; answers persist as messages and distill into the first `memories`. While onboarding is active, the envelope carries an extra field, `onboarding_complete`; the route flips `profile.onboarding_done` when GLM sets it true (it has asked enough) and the UI switches to the main chat.
+Reuses the chat route with an onboarding system prompt; Gemini asks a few facts one at a time; answers persist as messages and distill into the first `memories`. While onboarding is active, the envelope carries an extra field, `onboarding_complete`; the route flips `profile.onboarding_done` when Gemini sets it true (it has asked enough) and the UI switches to the main chat.
 PRD ref: `prd.md > Onboarding & Memory Seeding`.
 
 ### Main chat — `src/components/ChatView.tsx`, `src/components/Message.tsx`
-Conversation view; header with a **New session** button (creates an empty session row and swaps it in as active) beside the hamburger; input area with mic (Web Speech API → editable input text); markdown rendering; panels render above their answer.
-PRD ref: `prd.md > The Core Journey` steps 3–4, `prd.md > Voice Input`, `prd.md > Look and Feel`.
+Conversation view; input area with mic (Web Speech API → editable input text); markdown rendering; panels render above their answer. **Stateless:** the client holds the active session id only in memory for the current visit — it never restores or displays past sessions, so every launch is a clean conversation.
+PRD ref: `prd.md > The Core Journey` steps 3–4, 7, `prd.md > Voice Input`, `prd.md > Look and Feel`.
 
 ### Chat turn route — `src/app/api/chat/route.ts`
-The loop in one place: persist user message → recall → build prompt → GLM call → parse envelope → persist answer + sources → memory-extraction call → upsert distilled memories (+ FTS index). Returns the envelope JSON.
+The loop in one place: persist user message → recall → build prompt → Gemini call → parse envelope → persist answer + sources → memory-extraction call → upsert distilled memories (+ FTS index). Returns the envelope JSON.
 PRD ref: engine behind `prd.md > Session Continuity`, `prd.md > Memory Recall`, `prd.md > Repetition Guard`, `prd.md > Visible vs. Invisible Memory`.
 
 ### Continuity responder — inside the chat route
-"Let's continue" is detected as a case-insensitive literal match on "let's continue" (plus "lets continue" / "let us continue") in a fresh session's first user message — no model classification needed. On a match: last session's tail + its memories → summary + proposed next step; empty store → clarifying question.
+"Let's continue" is detected as a case-insensitive literal match on "let's continue" (plus "lets continue" / "let us continue") in a fresh session's first user message — a fresh session is every app launch, since the surface is stateless. No model classification needed. On a match: last session's tail + its memories → summary + proposed next step; empty store → clarifying question.
 PRD ref: `prd.md > Session Continuity`.
 
 ### Recall engine — `src/lib/memory.ts`
@@ -85,9 +85,9 @@ PRD ref: `prd.md > Memory Recall`, `prd.md > Repetition Guard`.
 Collapsible panel above the answer when `memory_used` is true: source session and date, what was taken, why it's relevant now — straight from the envelope. Routine answers render nothing.
 PRD ref: `prd.md > Visible vs. Invisible Memory`.
 
-### History drawer — `src/components/HistoryDrawer.tsx` + `src/app/api/sessions/route.ts`
-Hamburger toggles the session list; tapping one makes that session the **active** one — resumable, with new messages appending to it. A "New session" action at the top of the list does the same for an empty row. Reads the same SQLite store.
-PRD ref: `prd.md > History View`.
+### Stateless surface — `ChatView` client state + `src/app/api/sessions/route.ts` (server-side only)
+The client never renders a session list. `/api/sessions` remains as a server-side read for continuity (last session's tail), provenance (panel dates), and demo QA. Sessions exist in the store so memories can be attributed — not so users can browse them.
+PRD ref: `prd.md > Stateless Surface`.
 
 ### Error & retry — ChatView state + the chat route's error contract
 The pending message is held in client state until a response arrives; failure renders an error + retry; retry resends the identical message without retyping.
@@ -97,7 +97,7 @@ PRD ref: `prd.md > Failure & Recovery`.
 
 SQLite file `data/memory.db`, Drizzle schema in `src/lib/schema.ts`:
 
-- **sessions** — id, title (derived from first user words), created_at, updated_at. *Come back:* history lists all; opening one loads its messages.
+- **sessions** — id, title (derived from first user words), created_at, updated_at. *Role:* internal kernel structure — memories point at sessions for provenance, and "let's continue" reads the last one. Never rendered as a list.
 - **messages** — id, session_id → sessions, role (user/assistant), content, created_at. *Updated:* appended per turn; a failed turn appends nothing — the pending message lives in client state until success.
 - **memories** — id, content (one distilled fact/decision/topic), source_session_id → sessions, created_at. *Updated:* inserted by the extraction step; this is the long-term store recall reads from.
 - **memories_fts** — FTS5 virtual table indexing `memories.content`, written alongside each memory insert in `memory.ts`. *Why:* keyword recall with session provenance, zero extra service.
@@ -118,33 +118,33 @@ personal-ai/
 │   │   ├── page.tsx                  # Get Started → Onboarding → ChatView gating
 │   │   ├── globals.css               # palette/spacing tokens, airy styles
 │   │   └── api/
-│   │       ├── chat/route.ts         # the turn loop (recall → prompt → GLM → persist)
-│   │       └── sessions/route.ts     # history list + single-session fetch
+│   │       ├── chat/route.ts         # the turn loop (recall → prompt → Gemini → persist)
+│   │       └── sessions/route.ts     # server-side session reads (continuity + provenance)
 │   ├── components/
 │   │   ├── GetStarted.tsx
 │   │   ├── Onboarding.tsx
-│   │   ├── ChatView.tsx              # conversation + input + mic + hamburger
+│   │   ├── ChatView.tsx              # stateless conversation + input + mic
 │   │   ├── Message.tsx               # markdown, airy long-form rendering
-│   │   ├── ThoughtSignature.tsx      # collapsible recall panel
-│   │   └── HistoryDrawer.tsx
+│   │   └── ThoughtSignature.tsx      # collapsible recall panel
 │   └── lib/
-│       ├── llm.ts                    # the only module that calls NVIDIA NIM
+│       ├── llm.ts                    # the only module that calls Google AI (Gemini)
 │       ├── memory.ts                 # FTS5 recall, repetition guard, extraction
 │       ├── db.ts                     # better-sqlite3 + Drizzle wiring
 │       └── schema.ts                 # table definitions
 ├── scripts/
+│   ├── probe-llm.ts                  # one-call provider probe (envelope + latency)
 │   └── seed.ts                       # seeds demo sessions/memories for the quality-bar check
-├── .env.local                        # NVIDIA_API_KEY (gitignored)
+├── .env.local                        # GOOGLE_API_KEY (gitignored)
 └── package.json
 ```
 
 ## External Services and Dependencies
 
-**NVIDIA NIM — the only external service.**
-- Call: `POST {NIM base URL}/chat/completions` (OpenAI-compatible), header `Authorization: Bearer $NVIDIA_API_KEY`. Exact base URL confirmed in current docs at build start (NIM docs: https://docs.api.nvidia.com/nim/reference/llm-apis).
-- Payload: `{ model: "z-ai/glm-5.3-flash", messages: [...], temperature }` — standard OpenAI chat-completion shape; the spec asks GLM to answer *inside* a JSON envelope.
+**Google AI (Gemini API) — the only external service.**
+- Call: `POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` (OpenAI-compatible), header `Authorization: Bearer $GOOGLE_API_KEY`. Confirmed in Google's OpenAI-compatibility docs (2026-10-22).
+- Payload: `{ model: "gemini-3.8-flash", messages: [...], temperature, max_tokens, reasoning_effort }` — standard OpenAI chat-completion shape; the spec asks Gemini to answer *inside* a JSON envelope. Thinking tokens count against `max_tokens`, so the budget stays generous; thinking effort is capped at "low" for reply speed (verified live at probe time).
 - Two call kinds per turn: the answer call and a small memory-extraction call. No embeddings in v1.
-- Model verified listed on NIM's LLM APIs page (2026-10-15). Free credits/rate limits: verify at build start.
+- Key: free at AI Studio (https://aistudio.google.com). Free-tier RPM/RPD recorded at probe time.
 
 **In-repo dependencies** (local, no keys): `next`, `react`, `better-sqlite3` (https://github.com/WiseLibs/better-sqlite3), `drizzle-orm` (https://orm.drizzle.team), `openai` SDK (https://github.com/openai/openai-node), `react-markdown` (https://github.com/remarkjs/react-markdown).
 
@@ -162,11 +162,11 @@ personal-ai/
 
 ## Important Failure Modes
 
-- **NVIDIA call fails or hangs** → every model call carries a 60-second timeout, so a hang becomes the same failure: error message + retry button; the pending message stays in client state until answered. PRD ref: `prd.md > Failure & Recovery`.
+- **Model call fails or hangs** → every model call carries a 60-second timeout, so a hang becomes the same failure: error message + retry button; the pending message stays in client state until answered. PRD ref: `prd.md > Failure & Recovery`.
 - **Envelope comes back malformed** → one repair re-prompt; if still bad, show the raw text as a plain answer without a panel — never block the user on a formatting failure.
 - **The extraction call fails** → it never fails the user-facing turn: the answer is already saved and shown; the memory distillation is skipped and logged for the POC.
 - **FTS returns junk / nothing clears the relevance floor** → answer with no recalled context; invisible mode is the default, panels only on real hits. PRD ref: `prd.md > Visible vs. Invisible Memory`.
-- **Day one, empty store** → continuity and recall prompts explicitly forbid inventing history; GLM asks a clarifying question instead. PRD ref: `prd.md > States and Boundaries` ("Empty memory").
+- **Day one, empty store** → continuity and recall prompts explicitly forbid inventing history; Gemini asks a clarifying question instead. PRD ref: `prd.md > States and Boundaries` ("Empty memory").
 - **Browser without the Web Speech API** → the mic button isn't rendered; typing is unaffected.
 
 ## What Was Simplified and Why
@@ -181,13 +181,14 @@ personal-ai/
 
 **Learner choices (agreed in conversation):**
 - **TypeScript + Next.js for v1** — accepted the recommendation after weighing Python and Flutter. Flutter is the candidate for the later mobile/sync iteration; your cross-device ambition is a recorded **north star, not v1 scope**, and the SQLite schema stays portable for it.
-- **`z-ai/glm-5.3-flash` on NVIDIA NIM** — your pick; availability verified against NIM's model list before recording.
+- **`gemini-3.8-flash` on Google AI** — your pick (2026-10-23), replacing `z-ai/glm-5.3-flash` on NVIDIA NIM after live use showed 44–107s silent waits that read as "the AI never responds" (both test replies did land — recorded in the checklist). Google's OpenAI-compatible endpoint keeps the envelope architecture and the SDK unchanged.
+- **App stateless, AI stateful** — your call (2026-10-23): no history UI, no session management; every launch opens a clean conversation and the kernel carries everything. The planned history drawer and New-session button were cut; mic input moved earlier.
 - **Cartesia (Ink 2 / Sonic 3.5) parked to Later Enhancements** — voice is modality, not the memory kernel; the PRD's device-STT decision stands, and v1 keeps exactly one external service.
 - **Theme follows the device automatically** — dark and light both ship via `prefers-color-scheme`.
 
 **Derived from your choices (implementation detail, not new decisions):** better-sqlite3 + Drizzle; FTS5 as the recall engine; the JSON envelope; the one-process architecture; react-markdown.
 
-**The useful unknown — keyword-retrieval quality bar.** Your PRD flagged that how good keyword matching must *feel* was unresolved. Resolved here as a testable target: with five or more real or seeded sessions, mentioning a distinctive phrase from an old session must surface that session's memory among the top FTS hits, and recall must **not** fire on unrelated messages. Verified during the build with a small seed script before the demo is recorded. If keyword matching misses the bar, the recorded upgrade is embeddings served via NIM — the schema doesn't change.
+**The useful unknown — keyword-retrieval quality bar.** Your PRD flagged that how good keyword matching must *feel* was unresolved. Resolved here as a testable target: with five or more real or seeded sessions, mentioning a distinctive phrase from an old session must surface that session's memory among the top FTS hits, and recall must **not** fire on unrelated messages. Verified during the build with a small seed script before the demo is recorded. If keyword matching misses the bar, the recorded upgrade is embeddings served via the Gemini API — the schema doesn't change.
 
 **Resolved PRD open questions:** storage engine + ORM = SQLite with better-sqlite3 + Drizzle (your lean, confirmed); keyword quality bar = the testable target above; theme = device auto. No consequential gaps remain open.
 

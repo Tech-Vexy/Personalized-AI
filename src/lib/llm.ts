@@ -1,25 +1,31 @@
 import OpenAI from "openai";
 
 /**
- * The only module in the app that talks to NVIDIA NIM (spec.md > Stack).
+ * The only module in the app that talks to Google AI — Gemini via the
+ * OpenAI-compatible endpoint (spec.md > Stack).
  * Every model call in the product goes through here, so a provider or
  * model swap stays a one-file change.
  */
 
-export const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
+export const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 /**
- * GLM-5.3-flash is a reasoning model: measured NIM latency is ~105-170s per
- * call even at reasoning_effort "low" (recorded in devpost/checklist.md,
- * slice 1 evidence). The spec's original 60s timeout always fired first,
- * so the ceiling is 180s — the risk slice's recorded remedy.
+ * gemini-3.8-flash is a fast Flash model; 60s leaves headroom for its
+ * thinking pass plus a long envelope (Google counts thinking tokens against
+ * max_output_tokens). Re-baselined from the GLM-era 180s after the swap —
+ * evidence recorded in devpost/checklist.md (slice 3).
  */
-export const REQUEST_TIMEOUT_MS = 180_000;
-/** Room for GLM's separate reasoning pass AND the JSON envelope answer. */
+export const REQUEST_TIMEOUT_MS = 60_000;
+/** Room for Gemini's thinking pass AND the JSON envelope answer. */
 export const MAX_COMPLETION_TOKENS = 2048;
+
+/** Google AI Studio key; GEMINI_API_KEY accepted as the common alias. */
+export function apiKey(): string {
+  return process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY ?? "";
+}
 
 /** The model id, read at call time so env overrides (.env.local) always win. */
 export function modelId(): string {
-  return process.env.NIM_MODEL ?? "z-ai/glm-5.3-flash";
+  return process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
 }
 
 export type ChatMessage = {
@@ -68,8 +74,8 @@ let _client: OpenAI | null = null;
  */
 export function getClient(): OpenAI {
   _client ??= new OpenAI({
-    apiKey: process.env.NVIDIA_API_KEY ?? "",
-    baseURL: process.env.NIM_BASE_URL ?? DEFAULT_BASE_URL,
+    apiKey: apiKey(),
+    baseURL: process.env.GEMINI_BASE_URL ?? DEFAULT_BASE_URL,
     timeout: REQUEST_TIMEOUT_MS,
   });
   return _client;
@@ -100,9 +106,10 @@ export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
       messages,
       temperature: 0.7,
       max_tokens: MAX_COMPLETION_TOKENS,
-      // GLM-5.3 thinks by default at "max" budget, which can consume the
-      // whole completion budget before the envelope is written (observed:
-      // content null). "low" is the documented floor (NIM GLM-5.3 docs).
+      // Gemini 3.x models think by default; thinking tokens count against
+      // max_tokens, and an uncapped budget shows up as latency. "low" keeps
+      // quality for conversational turns while capping the burn — verified
+      // against the live API at probe time (devpost/checklist.md, slice 3).
       reasoning_effort: "low",
     })
     .withResponse();

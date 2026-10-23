@@ -12,19 +12,18 @@ Source: `scope.md > The Core Loop`, `scope.md > The Unique Kernel`. No accounts,
 
 1. **First launch — Get Started.** A page that describes what the app does. No signup, no login — there is nothing to authenticate into.
 2. **Onboarding — the AI asks for a few facts.** Not a form: a conversation. The answers are the first entries in long-term memory, so even session one has something to remember.
-3. **Main screen.** A chat input (with a mic button), the conversation, and a hamburger button that toggles the history view.
-4. **"Let's continue."** In any new session, saying this makes the AI summarize where the last session left off and propose the next step. On day one — with no sessions to continue — the AI asks for clarification instead of inventing a fake "yesterday."
+3. **Main screen.** A chat input (with a mic button) and the conversation. That's the whole screen — no history UI anywhere.
+4. **"Let's continue."** Every launch of the app opens a fresh conversation. Saying "let's continue" as the first message makes the AI summarize where the last session left off and propose the next step. On day one — with nothing to continue — the AI asks for clarification instead of inventing a fake "yesterday."
 5. **Talking normally.** As the conversation touches older ground, relevant past sessions resurface on their own from the unified memory. Most of the time this is invisible; when the AI judges that showing its work matters, a collapsible thought-signature panel appears above the answer: which session it pulled from, what it took, why it's relevant now.
 6. **Asking twice.** If someone requests something they already got — the CV from last week — the AI retrieves instead of regenerating: it points back to the prior conversation and what was made there.
-7. **History view.** A list of past conversations; tapping one opens it. The history and the memory are two lenses on the same store.
+7. **A stateless surface, a stateful AI.** The app holds nothing: every launch opens a clean conversation, and nothing old is ever rendered back. History lives entirely inside the memory kernel — asking the AI is the only way to reach the past, which is exactly how it should feel.
 8. **Success.** The two demo beats from `scope.md > What "Working" Looks Like`, plus one new one: the clean-slate session that isn't clean; keyword recall that names its source; retrieval instead of regeneration.
 
 ## Screens and Layout
 
 - **Get Started** — a single page introducing the features; a button flows onward. No signup/login buttons exist.
 - **Onboarding** — conversational; the AI asks a few questions about the user, one at a time.
-- **Main chat** — conversation view; input area at the bottom with a mic button beside text input; hamburger at the top toggles the history view. Thought-signature panels, when shown, render above the response they explain.
-- **History view** — toggled from the main screen; a list of past conversations; tapping an item opens that conversation.
+- **Main chat** — conversation view; input area at the bottom with a mic button beside text input. Thought-signature panels, when shown, render above the response they explain. There is no hamburger and no history screen.
 
 ## Look and Feel
 
@@ -40,8 +39,8 @@ The AI opens onboarding by asking a few facts about the user, conversationally. 
 - [ ] Onboarding feels like chat, not a form (no questionnaire UI).
 
 ### Session Continuity — "let's continue"
-In any new session, "let's continue" produces a summary of where the last session left off and a proposed next step.
-- [ ] A fresh session after a real prior session yields an accurate "yesterday we looked at…, today…" response without the user hunting through history.
+Every launch opens a fresh conversation; "let's continue" as its first message produces a summary of where the last session left off and a proposed next step.
+- [ ] After reopening the app, "let's continue" yields an accurate "yesterday we looked at…, today…" response without the user hunting through anything.
 - [ ] On day one (facts but no sessions), "let's continue" produces a clarifying question — never a fabricated recap.
 
 ### Memory Recall — unified store, keyword retrieval
@@ -58,10 +57,10 @@ The AI decides, moment by moment, whether to show its work. Invisible: seamless 
 Requesting something already produced in a past session triggers retrieval: the AI points back to the prior conversation and its content instead of generating a new variant.
 - [ ] Repeating a past request yields a reference to the original ("you asked for this on Oct 2 — here it is"), not a fresh regeneration.
 
-### History View
-The hamburger toggles a list of past conversations; tapping one opens that conversation. History and memory read from the same store.
-- [ ] Every past session appears in the history list.
-- [ ] Opening a history item shows that full conversation.
+### Stateless Surface — the app holds nothing, the AI holds everything
+No history UI exists: no hamburger, no session list, no "new session" button. Each app launch starts a clean conversation; internal sessions rotate automatically and exist only so the kernel can attribute memories. The user never reviews history — they just ask the AI.
+- [ ] Relaunching the app opens an empty conversation — no old messages restored to the screen.
+- [ ] Past context still shapes answers after a relaunch (via the kernel, not the UI).
 
 ### Voice Input
 The mic button captures speech through the device/OS built-in speech-to-text; no custom STT or TTS.
@@ -86,6 +85,8 @@ If the model call fails, the user sees an error message with a retry button. The
 - **Mic input kept, via device/OS built-in speech-to-text** — "some thoughts get lost while typing"; no custom STT/TTS plumbing in v1.
 - **Ephemeral mode cut after being proposed** — the design philosophy is efficient memory management with on-demand retrieval; the agent loop decides what is permanent and what is transient.
 - **Visible vs. invisible memory decided by the AI's judgment** — rendered as thought-signature-style panels; no user-facing toggle.
+- **App stateless, AI stateful (2026-10-23)** — the user never reviews history or manages sessions; history lives inside the memory kernel and the surface opens clean on every launch. Replaces the planned history drawer and New-session button (learner: "remember history is all part of memory kernel and not app… they just ask the AI").
+- **Brain: `gemini-3.8-flash` on Google AI (2026-10-23)** — replaces NVIDIA NIM GLM-5.3-flash after live use: 44–107s silent waits read as "the AI never responds" even though replies landed. Google's OpenAI-compatible endpoint keeps the envelope architecture unchanged.
 - **v1 is pure conversation** — generated files don't prove memory; the repetition-waste insight (regenerating a CV you already got) is recorded as the future rationale for an artifacts/library feature.
 - **Visual direction: Gemini/Claude-like** — calm, clean, airy long responses; explicitly avoid ChatGPT-style bulky large responses.
 
@@ -95,11 +96,11 @@ Everything the proof of concept must do to be complete:
 
 1. Get Started page (no accounts).
 2. Conversational onboarding that seeds long-term memory.
-3. Main chat with text input, device-STT mic button, and hamburger history toggle.
+3. Main chat with text input and device-STT mic button — no history chrome on the surface.
 4. "Let's continue" session continuity from the unified memory store.
 5. Keyword-based recall of older sessions, invisible by default with AI-judged thought-signature panels.
 6. Repetition guard — retrieval instead of regeneration for already-made things.
-7. History view listing and reopening past conversations.
+7. Stateless surface — clean conversation on every launch; the memory kernel provides all continuity.
 8. Error + retry handling that preserves the pending message.
 
 ## Deferred From the POC

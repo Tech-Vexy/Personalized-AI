@@ -29,7 +29,17 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Have a short conversation, restart the app, confirm it all came back — then say how the look and feel lands against the Gemini/Claude target. This is the early-feedback checkpoint: your reactions here shape the remaining slices.
   Commit: `Chat with persisted sessions`
 
-- [ ] **3. The kernel: it recalls old ground and shows its receipts**
+- [x] **3. Swap the brain to Gemini 3.8 Flash and make the app stateless (learner decisions, 2026-10-23)**
+  Becomes usable: The app talks to `gemini-3.8-flash` on Google AI through its OpenAI-compatible endpoint, and every launch opens a clean conversation — nothing restored on screen. The store keeps everything for the kernel; the AI is the stateful part, the app is not.
+  Why now: Two learner product calls reshape the surface every later slice builds on: GLM's 44–170s silent waits read as "the AI never responds" (both replies did land — the store proves it), and history/session chrome is moving out of the app into the kernel. Cheaper to land before the kernel than after.
+  PRD ref: `prd.md > Product Decisions` (app stateless / AI stateful; model swap), `prd.md > The Core Journey` step 7
+  Spec ref: `spec.md > Stack`, `spec.md > External Services and Dependencies`, `spec.md > Components > Main chat`
+  Build: `src/lib/llm.ts` → base URL `https://generativelanguage.googleapis.com/v1beta/openai/`, key `GOOGLE_API_KEY`, model `gemini-3.8-flash` (env-overridable via `GEMINI_MODEL`); thinking controlled (verify `reasoning_effort:"low"` against the live API; keep a generous `max_tokens` — thinking counts against it); timeout re-baselined from measured latency; `.env.example` rewritten for Google AI; probe renamed `scripts/probe-llm.ts` (package.json `probe` script follows); `ChatView.tsx` drops the reopen-latest-session effect — stateless: an empty conversation on every launch — with empty-state copy saying the surface starts clean while the AI keeps what it knows; `/api/sessions` stays server-side (continuity + provenance read it).
+  Verify (mechanical): with `GOOGLE_API_KEY` in `.env.local`, `npm run probe` prints a parsed envelope with non-empty answer; record latency and the free-tier RPM/RPD situation; `npm run dev` boots to an empty conversation; typecheck clean.
+  Learner check: create a Gemini API key in AI Studio and put it in `.env.local` as `GOOGLE_API_KEY=…`; send one message and feel the reply latency.
+  Commit: `Swap NIM GLM for Gemini 3.8 Flash and make the surface stateless`
+
+- [ ] **4. The kernel: it recalls old ground and shows its receipts**
   Becomes usable: Tell it something in one session; in a later session, mention the topic and it answers with that memory — usually silently, sometimes with a collapsible thought-signature panel above the answer naming the source session, what it took, and why now.
   Why now: This is The Unique Kernel — memory with judgment — placed as early as the loop allows. The keyword quality bar is verified here, while the recorded remedy (embeddings via NIM, schema unchanged) is still cheap.
   PRD ref: `prd.md > Memory Recall — unified store, keyword retrieval`, `prd.md > Visible vs. Invisible Memory — the AI's judgment`
@@ -39,17 +49,17 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: In a fresh session, mention something from an earlier one — first watch it answer silently, then watch the thought-signature panel appear. Does the "pulling from your Oct 2 session…" moment feel like proof, or clutter?
   Commit: `Add long-term memory recall and thought-signature panels`
 
-- [ ] **4. "Let's continue" picks up the thread**
-  Becomes usable: A New session button in the chat header; type "let's continue" in a fresh session and the AI summarizes where the last session left off and proposes the next step, unprompted. On day one with no sessions: a clarifying question, never a fabricated recap.
+- [ ] **5. "Let's continue" picks up the thread**
+  Becomes usable: Type "let's continue" as the first message after reopening the app and the AI summarizes where the last session left off and proposes the next step, unprompted. On day one with no sessions: a clarifying question, never a fabricated recap.
   Why now: The core loop's opening move and the demo's first "oh, that's cool" beat; it depends on sessions and memories existing, so it lands right after the kernel.
   PRD ref: `prd.md > Session Continuity — "let's continue"`
-  Spec ref: `spec.md > Components > Continuity responder`, `spec.md > Components > Main chat` (New session button)
-  Build: New session button (creates an empty session row, swaps it in as active); continuity detection in the chat route as a case-insensitive literal match on "let's continue" / "lets continue" / "let us continue" in a fresh session's first user message (no model classification); on match: last session's tail + its memories → recap prompt ("yesterday we looked at…, today…"); empty-store prompt rule that forbids inventing history and forces a clarifying question.
+  Spec ref: `spec.md > Components > Continuity responder`
+  Build: continuity detection in the chat route as a case-insensitive literal match on "let's continue" / "lets continue" / "let us continue" in a fresh session's first user message — a fresh session is every app launch (the surface is stateless since slice 3), so detection applies to the first message of a visit (no model classification); on match: last session's tail + its memories → recap prompt ("yesterday we looked at…, today…"); empty-store prompt rule that forbids inventing history and forces a clarifying question.
   Verify (mechanical): after a real session, a fresh session + "let's continue" returns an accurate recap referencing that session's content; with an empty store it asks for clarification; case variants ("Lets continue") all trigger; normal first messages do not trigger it.
   Learner check: This is the beat you scoped the whole app around — open a brand-new session, say "let's continue", and judge whether the pickup feels like relief or a parlor trick.
   Commit: `Add session continuity and new-session flow`
 
-- [ ] **5. First launch: Get Started and conversational onboarding**
+- [ ] **6. First launch: Get Started and conversational onboarding**
   Becomes usable: A fresh data file now starts at a Get Started page, flows into an onboarding *conversation* (the AI asks a few facts one at a time, no form UI), and lands in the main chat — which can already reference the seeded facts on its own.
   Why now: Completes the PRD's front door and seeds the store the kernel reads; the last journey piece needed before the navigation and guard polish.
   PRD ref: `prd.md > The Core Journey` (steps 1–2), `prd.md > Onboarding & Memory Seeding`
@@ -59,17 +69,17 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Run onboarding yourself on a fresh database — does it feel like conversation rather than a questionnaire, and does the AI correctly use a fact you gave it afterward?
   Commit: `Add Get Started gate and conversational onboarding`
 
-- [ ] **6. History: the second lens on the same store**
-  Becomes usable: The hamburger toggles a drawer listing every session with its derived title and date; tapping one reopens it resumable — new messages append to it; a New session action lives at the top of the list.
-  Why now: Round-trips the PRD's navigation step and demonstrates that history and recall are two lenses on one SQLite file — no second source of truth.
-  PRD ref: `prd.md > History View`
-  Spec ref: `spec.md > Components > History drawer`, `spec.md > Data Model` (sessions)
-  Build: `src/app/api/sessions/route.ts` (list all sessions; fetch one with its messages); `HistoryDrawer.tsx` toggled from the chat header's hamburger; tapping a session makes it active and loads its messages; auto-derived titles from the first user words (renaming is recorded later polish).
-  Verify (mechanical): create 3+ sessions → all listed with correct titles/dates; opening one loads exactly its messages; sending a message while an old session is active appends to that session, not the newest; the drawer and recall read the same database rows.
-  Learner check: Flip between old conversations and the current one, continue an old thread, and confirm nothing crosses between sessions.
-  Commit: `Add history drawer over sessions`
+- [ ] **7. Mic input and legible waiting**
+  Becomes usable: The mic button dictates into the input (editable before sending, Chromium browsers); while the model thinks, the UI shows a clear waiting state with elapsed seconds, so silence never reads as dead. (Replaces the cut history-drawer slice; mic pulled forward at the learner's flag.)
+  Why now: The learner flagged the missing mic first, and GLM-era silent waits eroded trust ("the AI never responds" — it was thinking). Both are surface-level and independent of the kernel, so they slot cleanly after it.
+  PRD ref: `prd.md > Voice Input`, `prd.md > Look and Feel`
+  Spec ref: `spec.md > Components > Main chat` (mic), `spec.md > Components > Error & retry` (waiting state)
+  Build: Web Speech API dictation → editable input text (mic not rendered when the API is absent); waiting-state upgrade on the typing indicator: elapsed-seconds hint ("thinking… 12s"), composer disabled while in flight, aria-live announcement; auto-derived session titles stay as-is (renaming remains later polish).
+  Verify (mechanical): mic fills the input in a Chromium browser; the waiting state shows elapsed time during a real turn and disappears on reply or error; `/api/sessions` still serves internal reads for continuity/provenance.
+  Learner check: dictate a message and watch the waiting state — does the wait feel legible rather than dead?
+  Commit: `Add mic input and legible waiting state`
 
-- [ ] **7. Asked twice? Point back, don't regenerate**
+- [ ] **8. Asked twice? Point back, don't regenerate**
   Becomes usable: Request something you already got — the CV from last week — and the AI retrieves instead of regenerating: it points back to the earlier conversation and what was made there. Unrelated new requests proceed normally.
   Why now: The PRD's repetition-waste insight, kept as its own small slice so the kernel slice stays focused; it completes `memory.ts`'s repertoire exactly as the spec splits it (recall + repetition detection in one module).
   PRD ref: `prd.md > Repetition Guard — retrieval over regeneration`
@@ -79,20 +89,20 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Ask for the same deliverable twice across sessions and watch it point back. Decide whether retrieval-over-regeneration feels like memory or like being brushed off.
   Commit: `Add repetition guard with retrieval instead of regeneration`
 
-- [ ] **8. Mic, failure modes, and the demo-ready surface**
-  Becomes usable: The mic button dictates into the input (editable before sending, Chromium browsers); model/network failures show an error with a retry button that resends the identical pending message; the whole journey looks like the calm, airy spec surface — ready to record.
+- [ ] **9. Failure modes and the demo-ready surface**
+  Becomes usable: Model/network failures show an error with a retry button that resends the identical pending message; the whole journey looks like the calm, airy spec surface — ready to record. (Mic moved to slice 7.)
   Why now: The last bundle of small PRD behaviors plus the visual pass, so the demo records the intended experience rather than a styled-at-the-end retrofit.
-  PRD ref: `prd.md > Voice Input`, `prd.md > Failure & Recovery`, `prd.md > Look and Feel`
-  Spec ref: `spec.md > Components > Main chat` (mic), `spec.md > Components > Error & retry`, `spec.md > Important Failure Modes`, `spec.md > Look and Feel`
-  Build: Web Speech API dictation → editable input text (mic not rendered when the API is absent); 60-second timeouts on every model call → error + retry with the pending message held in client state until answered; malformed-envelope repair re-prompt, then plain-text fallback (never block the user on formatting); airy styling pass over all screens (chat, panels, drawer, Get Started, onboarding) against the spec's tokens.
-  Verify (mechanical): run with an invalid `NVIDIA_API_KEY` → the UI shows error + retry, the pending message is preserved, and retry resends the identical text; restore the key and the same message succeeds; mic fills the input in a Chromium browser; `npm run build` passes clean.
-  Learner check: Dictate a message, then (with me) break the key to see error + retry recover your message. Then kick the tires across the whole journey — this flows into the final review.
-  Commit: `Add mic input, error and retry handling, and visual polish`
+  PRD ref: `prd.md > Failure & Recovery`, `prd.md > Look and Feel`
+  Spec ref: `spec.md > Components > Error & retry`, `spec.md > Important Failure Modes`, `spec.md > Look and Feel`
+  Build: 60-second timeouts on every model call → error + retry with the pending message held in client state until answered; malformed-envelope repair re-prompt, then plain-text fallback (never block the user on formatting); airy styling pass over all screens (chat, panels, Get Started, onboarding) against the spec's tokens.
+  Verify (mechanical): run with an invalid `GOOGLE_API_KEY` → the UI shows error + retry, the pending message is preserved, and retry resends the identical text; restore the key and the same message succeeds; `npm run build` passes clean.
+  Learner check: (With me) break the key to see error + retry recover your message. Then kick the tires across the whole journey — this flows into the final review.
+  Commit: `Add error and retry handling, and visual polish`
 
 ## Hands-on Checkpoints
 
-- [ ] Early usable behavior explored — after slice 2 (first real chat + restart): feedback on look/feel and reply quality, while it can still shape slices 3–8
-- [ ] Final kick-the-tires exploration and feedback completed — after slice 8: the full core journey, including the three demo beats (clean-slate session that isn't clean, recall that names its source, retrieval instead of regeneration)
+- [x] Early usable behavior explored — after slice 2 (first real chat + restart): feedback on look/feel and reply quality, while it can still shape slices 4–9. (Completed 2026-10-23: look/feel approved; mic absence, silent-latency perception, and no-way-to-start-fresh flagged — see Revisions.)
+- [ ] Final kick-the-tires exploration and feedback completed — after slice 9: the full core journey, including the three demo beats (clean-slate session that isn't clean, recall that names its source, retrieval instead of regeneration)
 
 ## Final Review
 
@@ -111,6 +121,10 @@ Reflection: [offered/answered/declined/already covered — personal answer belon
 Activity mode: [live app and editor, explicit static fallback, focused alternative, prior practice, or recap]
 
 ## Revisions
+
+- **Slice 3 evidence (2026-10-23):** `gemini-3.8-flash` verified live — probe PASS: valid envelope (non-empty markdown answer, `memory_used` boolean, `sources` array), 115s latency on the successful call, 234 in / 447 out tokens, no rate-limit headers; app-level turn HTTP 200 in 119.8s with a fresh session created from a stateless client. Intermittent HTTP 503 "high demand" episodes at Google persisted ~20 minutes before clearing — the OpenAI SDK's automatic retries rode through them, and the per-attempt 60s timeout held. Honest latency note: 3.8 currently answers in ~2 minutes under load — comparable to the GLM behavior that motivated the swap; slice 7's legible waiting state is the designed mitigation. During the spike, `gemini-3.6-flash` answered the same envelope in 5–7s; a temporary `GEMINI_MODEL=gemini-3.6-flash` override was set and then **removed at the learner's explicit instruction** — the model is `gemini-3.8-flash` as they chose. `reasoning_effort:"low"` and `max_tokens:2048` verified accepted by the live API (a 300-token probe truncated mid-envelope, confirming thinking tokens count against `max_tokens`).
+
+- **2026-10-23 — early feedback + two learner decisions (replan):** After slice 2 the learner explored the app: look/feel approved ("it looks good"), but flagged (1) no microphone input, (2) "the AI never responds" — diagnosis: both "Hello" messages DID get replies (store rows 3–6); GLM-5.3-flash latency of 44–107s with a silent UI read as dead, and a mid-wait page reload abandons the client fetch while the server still saves the reply, (3) no way to start a fresh conversation because the screen restores the old one. Learner decisions, recorded: **switch the brain to `gemini-3.8-flash` on Google AI** (OpenAI-compatible endpoint verified in docs 2026-10-22; exact model id and base URL `https://generativelanguage.googleapis.com/v1beta/openai/` confirmed); **app stateless, AI stateful** — the user never reviews history or manages sessions ("remember history is all part of memory kernel and not app… they just ask the AI"). Consequences applied to the plan: new slice 3 (provider swap + stateless surface); history-drawer slice cut; mic pulled forward into slice 7 with a legible waiting state; "let's continue" detection re-anchored to the first message after each launch (no New-session button); slices renumbered 1–9. Slice 1–2 records kept as history (NIM-era evidence above).
 
 - **Slice 1 evidence (2026-10-23):** GLM-5.3-flash verified live on NIM — probe PASS: valid envelope (non-empty markdown answer, `memory_used` boolean, `sources` array), 73.7s latency at `reasoning_effort:"low"` (earlier probes 105–170s), 236 in / 352 out tokens, no rate-limit headers returned. Model listing confirmed against the live catalog. Recorded remedies, applied in `src/lib/llm.ts`: `REQUEST_TIMEOUT_MS` 60s → 180s (GLM's thinking regularly exceeds 60s; the spec's 60s note is superseded), `max_tokens: 2048` (with a small budget GLM's reasoning pass consumed the completion before the envelope was written → `content: null`), `reasoning_effort: "low"` (documented GLM-5.3 knob; default is "max"). Live-catalog drift noted: `llama-3.3-70b-instruct`, `kimi-k2-instruct`, `qwen3-next-80b-a3b-instruct` are EOL (HTTP 410); `kimi-k2.6` is not enabled for this account (404). Learner confirmed keeping GLM-5.3-flash; no model swap.
 

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "probe": "tsx scripts/probe-nim.ts"
+    "probe": "tsx scripts/probe-llm.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

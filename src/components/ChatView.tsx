@@ -17,43 +17,8 @@ export default function ChatView() {
   /** The message held in client state until an answer exists (spec.md > Error & retry). */
   const [pending, setPending] = useState<{ text: string; localId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-
-  // Reopen the most recent conversation — persistence makes a restart transparent.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const listRes = await fetch("/api/sessions");
-        if (listRes.ok) {
-          const list = (await listRes.json()) as { sessions?: { id: number }[] };
-          const latest = list.sessions?.[0];
-          if (latest) {
-            const oneRes = await fetch(`/api/sessions?id=${latest.id}`);
-            if (oneRes.ok) {
-              const data = (await oneRes.json()) as {
-                session: { id: number };
-                messages: WireMessage[];
-              };
-              if (!cancelled) {
-                setSessionId(data.session.id);
-                setItems(data.messages);
-              }
-            }
-          }
-        }
-      } catch {
-        // First launch has nothing to reopen — start fresh.
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -128,13 +93,11 @@ export default function ChatView() {
       </header>
 
       <main className="chat">
-        {!loaded ? (
-          <div className="chat-loading">Loading…</div>
-        ) : items.length === 0 && !sending ? (
+        {items.length === 0 && !sending ? (
           <div className="chat-empty">
             <p className="chat-empty-title">What are you thinking through?</p>
             <p className="chat-empty-sub">
-              Say it in your own words. This conversation will still be here next time.
+              Every conversation starts clean. What the AI learns along the way, it keeps.
             </p>
           </div>
         ) : (
