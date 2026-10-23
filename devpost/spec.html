@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal AI That Remembers — Technical Spec (visual companion)</title>
+<style>
+  :root {
+    --bg:#faf9f7; --surface:#ffffff; --ink:#1f2933; --muted:#5b6b79;
+    --line:#e4e0d8; --accent:#2f6f6a; --accent-soft:#e3efee; --chip:#f1eee8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#14171a; --surface:#1c2126; --ink:#e8eaed; --muted:#9aa7b2;
+      --line:#2a3138; --accent:#5fb3ab; --accent-soft:#1e2e2c; --chip:#232a31;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; padding:32px 20px 80px; }
+  header h1 { font-size:1.7rem; margin:0 0 4px; letter-spacing:-.01em; }
+  header p.sub { color:var(--muted); margin:0 0 14px; }
+  .chip { display:inline-block; background:var(--chip); border:1px solid var(--line);
+    border-radius:999px; padding:2px 12px; font-size:.8rem; color:var(--muted); margin-right:8px; }
+  .chip.approved { background:rgba(52,211,153,.08); color:#34d399; border-color:#1d4a35; }
+  section { background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:22px 24px; margin-top:22px; }
+  h2 { font-size:1.05rem; margin:0 0 12px; letter-spacing:.02em; text-transform:uppercase; color:var(--muted); }
+  p { margin:.4em 0; }
+  .threepart { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--bg); }
+  .card b { color:var(--accent); }
+  .muted { color:var(--muted); font-size:.9rem; }
+  code { background:var(--chip); border-radius:5px; padding:1px 6px; font-size:.85em; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  svg text { fill:var(--ink); font:13px ui-sans-serif,system-ui,sans-serif; }
+  svg .box { fill:var(--bg); stroke:var(--line); }
+  svg .hot { stroke:var(--accent); }
+  svg .flow { stroke:var(--muted); fill:none; }
+  svg .lbl { fill:var(--muted); font-size:11px; }
+  footer { margin-top:26px; color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Personal AI That Remembers</h1>
+  <p class="sub">Technical spec — visual companion · <span class="chip approved">status: approved</span>
+     <span class="chip">canonical doc: devpost/spec.md</span></p>
+</header>
+
+<section>
+  <h2>How it works, in plain language</h2>
+  <div class="threepart">
+    <div class="card"><b>The interface</b><p class="muted">Browser window: chat, history drawer,
+      mic via device speech-to-text, collapsible thought-signature panels. Follows the device's
+      dark/light theme automatically.</p></div>
+    <div class="card"><b>The memory</b><p class="muted">One SQLite file. Sessions + messages,
+      plus distilled long-term memory entries, each tagged with its source session and indexed
+      by keyword search (FTS5).</p></div>
+    <div class="card"><b>The brain</b><p class="muted">One module calling
+      <code>z-ai/glm-5.3-flash</code> on NVIDIA NIM (OpenAI-compatible). Recall → prompt →
+      structured envelope → save + distill.</p></div>
+  </div>
+  <p class="muted">One process, one data file, exactly one external service — sized to prove the
+  kernel: unified memory with judgment.</p>
+</section>
+
+<section>
+  <h2>The core journey through the system</h2>
+  <p class="muted">PRD ref: <code>prd.md > The Core Journey</code> — each step names the component that owns it.</p>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div><b>First launch</b> — Get Started page, one button onward, no auth anywhere.<br><span class="muted"><code>GetStarted.tsx</code></span></div></div>
+    <div class="step"><div class="n">2</div><div><b>Onboarding</b> — conversational seeding; answers become the first long-term memories.<br><span class="muted"><code>Onboarding.tsx</code> · <code>prd.md > Onboarding & Memory Seeding</code></span></div></div>
+    <div class="step"><div class="n">3</div><div><b>Main screen</b> — airy chat, new-session button, mic fills input as editable text, hamburger toggles history.<br><span class="muted"><code>ChatView.tsx</code> · <code>Message.tsx</code> · <code>prd.md > Voice Input</code></span></div></div>
+    <div class="step"><div class="n">4</div><div><b>"Let's continue"</b> — last session's tail + memories → "yesterday we…, today…"; empty store → clarifying question, never fabricated.<br><span class="muted">chat route · <code>prd.md > Session Continuity</code></span></div></div>
+    <div class="step"><div class="n">5</div><div><b>Talking normally</b> — every message: FTS5 recall → relevance floor → prompt injection; panel only when the envelope says <code>memory_used</code>.<br><span class="muted"><code>memory.ts</code> · <code>ThoughtSignature.tsx</code> · <code>prd.md > Memory Recall</code>, <code>Visible vs. Invisible Memory</code></span></div></div>
+    <div class="step"><div class="n">6</div><div><b>Asking twice</b> — messages searched too; strong match → point back to the original, don't regenerate.<br><span class="muted"><code>prd.md > Repetition Guard</code></span></div></div>
+    <div class="step"><div class="n">7</div><div><b>History view</b> — session list; opening one loads its messages. Same store as recall.<br><span class="muted"><code>HistoryDrawer.tsx</code> · <code>/api/sessions</code> · <code>prd.md > History View</code></span></div></div>
+    <div class="step"><div class="n">8</div><div><b>Success</b> — the three demo beats are the acceptance test.<br><span class="muted"><code>prd.md > The Core Journey</code> step 8</span></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Architecture — where data moves</h2>
+  <svg viewBox="0 0 860 330" role="img" aria-label="Architecture diagram" style="width:100%;height:auto">
+    <rect class="box" x="16" y="56" width="216" height="240" rx="10"/>
+    <text x="28" y="82" font-weight="600">Browser</text>
+    <text x="28" y="110">ChatView · Message</text>
+    <text x="28" y="134">HistoryDrawer</text>
+    <text x="28" y="158">Mic — Web Speech API</text>
+    <text x="28" y="182">ThoughtSignature panel</text>
+    <text x="28" y="206">Onboarding · GetStarted</text>
+    <text x="28" y="238" class="lbl">theme: prefers-color-scheme</text>
+
+    <rect class="box hot" x="300" y="56" width="240" height="240" rx="10"/>
+    <text x="312" y="82" font-weight="600">Next.js process (npm run dev)</text>
+    <text x="312" y="110">/api/chat — turn loop</text>
+    <text x="312" y="134">/api/sessions — history</text>
+    <text x="312" y="164">lib/llm.ts — all model calls</text>
+    <text x="312" y="188">lib/memory.ts — recall</text>
+    <text x="312" y="212">lib/db.ts · schema.ts — Drizzle</text>
+    <text x="312" y="244" class="lbl">persist → recall → prompt → GLM</text>
+    <text x="312" y="264" class="lbl">→ envelope → save + distill</text>
+
+    <rect class="box hot" x="612" y="56" width="232" height="86" rx="10"/>
+    <text x="624" y="82" font-weight="600">NVIDIA NIM (cloud)</text>
+    <text x="624" y="106">z-ai/glm-5.3-flash</text>
+    <text x="624" y="128" class="lbl">the only external service</text>
+
+    <rect class="box" x="612" y="186" width="232" height="110" rx="10"/>
+    <text x="624" y="212" font-weight="600">SQLite — data/memory.db</text>
+    <text x="624" y="236">sessions · messages</text>
+    <text x="624" y="260">memories · memories_fts</text>
+    <text x="624" y="284" class="lbl">gitignored · delete to reset</text>
+
+    <path class="flow" d="M232 150 C 260 150 272 150 300 150"/>
+    <path class="flow" d="M300 166 C 272 166 260 166 232 166"/>
+    <text x="238" y="144" class="lbl">envelope JSON</text>
+    <text x="238" y="180" class="lbl">message</text>
+
+    <path class="flow" d="M540 96 C 570 96 582 96 612 96"/>
+    <text x="548" y="90" class="lbl">chat + extraction</text>
+
+    <path class="flow" d="M540 226 C 570 226 582 226 612 226"/>
+    <path class="flow" d="M612 262 C 582 262 570 262 540 262"/>
+    <text x="548" y="220" class="lbl">write</text>
+    <text x="548" y="278" class="lbl">read</text>
+  </svg>
+</section>
+
+<style>
+  .steps { display:flex; flex-direction:column; gap:10px; }
+  .step { display:flex; gap:14px; align-items:flex-start; border:1px solid var(--line);
+    border-radius:10px; padding:12px 14px; background:var(--bg); }
+  .step .n { flex:0 0 30px; height:30px; border-radius:999px; background:var(--accent-soft);
+    color:var(--accent); display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:.9rem; }
+  ul.tight { margin:.3em 0; padding-left:1.2em; }
+  ul.tight li { margin:.25em 0; }
+</style>
+
+<section>
+  <h2>One turn, end to end</h2>
+  <svg viewBox="0 0 860 452" role="img" aria-label="Turn data flow" style="width:100%;height:auto">
+    <rect class="box" x="250" y="10" width="320" height="38" rx="8"/>
+    <text x="266" y="34">1 · your message arrives</text><text x="590" y="34" class="lbl">persisted to messages</text>
+    <path class="flow" d="M410 48 L410 66"/><path class="flow" d="M404 60 L410 66 L416 60"/>
+    <rect class="box hot" x="250" y="66" width="320" height="38" rx="8"/>
+    <text x="266" y="90">2 · FTS5 keyword recall</text><text x="590" y="90" class="lbl">memories + messages · provenance</text>
+    <path class="flow" d="M410 104 L410 122"/><path class="flow" d="M404 116 L410 122 L416 116"/>
+    <rect class="box" x="250" y="122" width="320" height="38" rx="8"/>
+    <text x="266" y="146">3 · prompt built</text><text x="590" y="146" class="lbl">rules + snippets + session tail</text>
+    <path class="flow" d="M410 160 L410 178"/><path class="flow" d="M404 172 L410 178 L416 172"/>
+    <rect class="box hot" x="250" y="178" width="320" height="38" rx="8"/>
+    <text x="266" y="202">4 · GLM-5.3-Flash on NVIDIA NIM</text><text x="590" y="202" class="lbl">lib/llm.ts — only module</text>
+    <path class="flow" d="M410 216 L410 234"/><path class="flow" d="M404 228 L410 234 L416 228"/>
+    <rect class="box" x="250" y="234" width="320" height="38" rx="8"/>
+    <text x="266" y="258">5 · envelope parsed</text><text x="590" y="258" class="lbl">{ answer, memory_used, sources }</text>
+    <path class="flow" d="M410 272 L410 290"/><path class="flow" d="M404 284 L410 290 L416 284"/>
+    <rect class="box" x="250" y="290" width="320" height="38" rx="8"/>
+    <text x="266" y="314">6 · panel above answer if memory_used</text><text x="590" y="314" class="lbl">ThoughtSignature.tsx</text>
+    <path class="flow" d="M410 328 L410 346"/><path class="flow" d="M404 340 L410 346 L416 340"/>
+    <rect class="box" x="250" y="346" width="320" height="38" rx="8"/>
+    <text x="266" y="370">7 · answer saved</text><text x="590" y="370" class="lbl">appended to messages</text>
+    <path class="flow" d="M410 384 L410 402"/><path class="flow" d="M404 396 L410 402 L416 396"/>
+    <rect class="box hot" x="250" y="402" width="320" height="38" rx="8"/>
+    <text x="266" y="426">8 · extraction call distills → long-term memory</text><text x="590" y="426" class="lbl">memories + FTS index</text>
+  </svg>
+  <p class="muted">Step 8 is why session two is never a clean slate: the memory that step 2 finds
+  was written by step 8 of an earlier turn.</p>
+</section>
+
+<section>
+  <h2>Decisions, boundaries, fallbacks</h2>
+  <table>
+    <tr><th style="width:180px">Learner choices</th><td><b>TypeScript + Next.js</b> for v1 (Flutter revisited at the mobile/sync iteration — cross-device sync is a recorded north star, schema stays portable) ·
+      <b><code>z-ai/glm-5.3-flash</code> on NVIDIA NIM</b> · <b>Cartesia parked</b> to Later Enhancements · <b>theme follows the device</b> (dark + light).</td></tr>
+    <tr><th>Derived detail</th><td>better-sqlite3 + Drizzle · FTS5 recall · JSON envelope · one process · react-markdown.</td></tr>
+    <tr><th>Quality bar (testable)</th><td>With five or more real/seeded sessions: mentioning a distinctive phrase from an old session surfaces that session's memory among the top FTS hits — and recall does <i>not</i> fire on unrelated messages. Verified in build with a seed script before the demo recording. Miss the bar → recorded upgrade: embeddings via NIM, schema unchanged.</td></tr>
+    <tr><th>Failure → fallback</th><td><ul class="tight">
+      <li>NVIDIA call fails/hangs → error + retry; pending message held client-side until answered.</li>
+      <li>Envelope malformed → one repair re-prompt, then plain answer without panel — never block.</li>
+      <li>FTS junk / nothing clears the floor → answer with no recall; invisible is the default.</li>
+      <li>Day one, empty store → prompts forbid inventing history; clarifying question instead.</li></ul></td></tr>
+    <tr><th>Simplified on purpose</th><td><ul class="tight">
+      <li>Non-streaming JSON envelope instead of token streaming — panels need structure; typing indicator in the meantime.</li>
+      <li>FTS5 keywords instead of embeddings/vector DB — your recorded "keyword-based" decision.</li>
+      <li>Onboarding inside the normal chat pipeline — one code path proves the kernel.</li>
+      <li>Web Speech API dictation — free, Chromium-first, degrades elsewhere.</li>
+      <li>Local-only, no deployment — demo is a screen recording.</li></ul></td></tr>
+  </table>
+</section>
+
+<footer>
+  Markdown stays canonical: <code>devpost/spec.md</code> · model + endpoint verified 2026-10-15
+  (<a href="https://docs.api.nvidia.com/nim/reference/llm-apis">NIM LLM APIs</a>) ·
+  free credits/rate limits to confirm at build start.
+</footer>
+</div>
+</body>
+</html>

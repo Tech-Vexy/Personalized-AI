@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRD — Personal AI That Remembers</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b24; --panel2:#1c2330; --line:#2a3342;
+    --ink:#e8edf4; --muted:#9aa7ba; --accent:#5eead4; --accent2:#818cf8;
+    --warn:#fbbf24; --cut:#f87171; --ok:#34d399;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--ink); line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:48px 20px 80px;
+  }
+  .wrap{max-width:960px; margin:0 auto}
+  .kicker{color:var(--accent); font-size:12px; letter-spacing:.18em; text-transform:uppercase; font-weight:600}
+  h1{font-size:clamp(26px,4vw,38px); line-height:1.15; margin:10px 0 6px}
+  .oneline{color:var(--muted); font-size:18px; max-width:46em}
+  .badges{display:flex; gap:8px; flex-wrap:wrap; margin:18px 0 8px}
+  .badge{font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel)}
+  .badge.draft{color:var(--warn); border-color:#4a3f1d}
+  .badge.approved{color:var(--ok); border-color:#1d4a35}
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-top:18px}
+  h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent2); margin-bottom:12px}
+  p{margin-bottom:10px}
+  .expand{color:var(--accent); font-style:italic; font-size:14px; border-left:3px solid var(--accent); padding:6px 14px; margin:6px 0 2px; background:var(--panel2); border-radius:0 8px 8px 0}
+  .beh{display:flex; flex-direction:column; gap:10px; margin-top:6px}
+  details{background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  summary{cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 16px; font-weight:600; font-size:14px}
+  summary::-webkit-details-marker{display:none}
+  summary .tag{font-size:11px; color:var(--muted); font-weight:500; border:1px solid var(--line); border-radius:999px; padding:1px 9px; white-space:nowrap}
+  details .body{padding:0 16px 14px; font-size:13.5px; color:var(--muted)}
+  details .body ul{margin-left:18px}
+  details .body li{margin-bottom:6px}
+  details .body li b{color:var(--ink)}
+  details .body .crit{margin-top:8px; padding-top:8px; border-top:1px dashed var(--line)}
+  details .body .crit li{color:var(--ink)}
+  details .body .crit li::marker{color:var(--ok)}
+  details .body .state{color:var(--warn)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px 16px; font-size:13.5px; color:var(--muted)}
+  .card b{color:var(--ink)}
+  .diagram{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px; margin-top:6px}
+  .diagram svg{width:100%; height:auto; display:block}
+  footer{margin-top:26px; color:var(--muted); font-size:13px; text-align:center}
+  footer code{color:var(--ink); background:var(--panel2); padding:2px 7px; border-radius:6px; border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Devpost Learn · 3-prd · Review companion</div>
+  <h1>Personal AI That Remembers — Product Requirements</h1>
+  <p class="oneline">A single-user personal AI chat whose defining behavior is that it actually remembers — across sessions, on one device. No accounts, no cloud, pure conversation.</p>
+  <div class="badges">
+    <span class="badge approved">status: approved</span>
+    <span class="badge">single local user · on-device data</span>
+    <span class="badge">8 behaviors · checkable criteria</span>
+    <span class="badge">pure conversation in v1</span>
+  </div>
+  <section>
+    <h2>The Core Journey</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 920 340" role="img" aria-label="Journey: Get Started, onboarding seeds memory, main chat, let's continue, recall with thought signatures, repetition guard, history, success">
+        <defs>
+          <marker id="par" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5eead4"/>
+          </marker>
+        </defs>
+        <g font-size="12" fill="#9aa7ba">
+          <rect x="20" y="40" width="130" height="64" rx="10" fill="#161b24" stroke="#2a3342"/>
+          <text x="85" y="66" text-anchor="middle" fill="#e8edf4" font-weight="600" font-size="13">1 · Get Started</text>
+          <text x="85" y="86" text-anchor="middle">feature tour, no login</text>
+
+          <rect x="180" y="40" width="150" height="64" rx="10" fill="#161b24" stroke="#2a3342"/>
+          <text x="255" y="66" text-anchor="middle" fill="#e8edf4" font-weight="600" font-size="13">2 · Onboarding</text>
+          <text x="255" y="86" text-anchor="middle">AI asks facts → seeds memory</text>
+
+          <rect x="360" y="40" width="130" height="64" rx="10" fill="#161b24" stroke="#2a3342"/>
+          <text x="425" y="66" text-anchor="middle" fill="#e8edf4" font-weight="600" font-size="13">3 · Main chat</text>
+          <text x="425" y="86" text-anchor="middle">input + mic + history</text>
+
+          <rect x="520" y="40" width="170" height="64" rx="10" fill="#161b24" stroke="#5eead4" stroke-width="1.5"/>
+          <text x="605" y="66" text-anchor="middle" fill="#5eead4" font-weight="600" font-size="13">4 · "Let's continue"</text>
+          <text x="605" y="86" text-anchor="middle">picks up the last thread</text>
+
+          <rect x="720" y="40" width="180" height="64" rx="10" fill="#161b24" stroke="#5eead4" stroke-width="1.5"/>
+          <text x="810" y="66" text-anchor="middle" fill="#5eead4" font-weight="600" font-size="13">5 · Recall, on keywords</text>
+          <text x="810" y="86" text-anchor="middle">thought-signature when it matters</text>
+
+          <rect x="720" y="150" width="180" height="64" rx="10" fill="#161b24" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="810" y="176" text-anchor="middle" fill="#fbbf24" font-weight="600" font-size="13">6 · Repetition guard</text>
+          <text x="810" y="196" text-anchor="middle">retrieve, don't regenerate</text>
+
+          <rect x="360" y="150" width="150" height="64" rx="10" fill="#161b24" stroke="#2a3342"/>
+          <text x="435" y="176" text-anchor="middle" fill="#e8edf4" font-weight="600" font-size="13">7 · History view</text>
+          <text x="435" y="196" text-anchor="middle">same store, second lens</text>
+
+          <rect x="130" y="150" width="160" height="64" rx="10" fill="#161b24" stroke="#34d399" stroke-width="1.5"/>
+          <text x="210" y="176" text-anchor="middle" fill="#34d399" font-weight="600" font-size="13">Success</text>
+          <text x="210" y="196" text-anchor="middle">3 demoable beats</text>
+
+          <path d="M150 72 L172 72" stroke="#5eead4" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M330 72 L352 72" stroke="#5eead4" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M490 72 L512 72" stroke="#5eead4" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M690 72 L712 72" stroke="#5eead4" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M810 104 L810 142" stroke="#fbbf24" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M720 182 L518 182" stroke="#5eead4" stroke-width="2" marker-end="url(#par)"/>
+          <path d="M360 182 L298 182" stroke="#34d399" stroke-width="2" marker-end="url(#par)"/>
+        </g>
+        <text x="460" y="266" text-anchor="middle" fill="#9aa7ba" font-size="13">Day one branch: "let's continue" with no sessions → the AI asks for clarification, never invents a past. Failure branch: model call fails → error + retry, message held in short-term memory.</text>
+        <text x="460" y="296" text-anchor="middle" fill="#9aa7ba" font-size="13">Every conversation persists to one unified long-term store — history and memory are two lenses on it.</text>
+      </svg>
+    </div>
+    <p class="expand">Scope said "the AI picks up where the last session left off." Now we know the whole path that makes it true — including the two moments it must NOT pretend: no invented past, no lost message.</p>
+  </section>
+  <section>
+    <h2>Features & Behavior — click each to expand</h2>
+    <div class="beh">
+      <details>
+        <summary>Onboarding & Memory Seeding <span class="tag">first use</span></summary>
+        <div class="body">
+          <p>The AI opens onboarding by asking a few facts about the user, conversationally. Answers become the first long-term memories.</p>
+          <ul class="crit">
+            <li>After onboarding, the AI can correctly reference a seeded fact in later conversation.</li>
+            <li>Onboarding feels like chat, not a form — no questionnaire UI.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Session Continuity — "let's continue" <span class="tag">core loop</span></summary>
+        <div class="body">
+          <p>In any new session, "let's continue" produces a summary of where the last session left off and a proposed next step.</p>
+          <ul class="crit">
+            <li>Fresh session after a real prior session → accurate "yesterday we looked at…, today…" without hunting through history.</li>
+            <li>Day one (facts but no sessions) → a clarifying question, never a fabricated recap.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Memory Recall — unified store, keyword retrieval <span class="tag">core loop</span></summary>
+        <div class="body">
+          <p>Past sessions resurface automatically when the conversation touches their subject, from one unified store spanning all sessions.</p>
+          <ul class="crit">
+            <li>Mentioning a topic from an old session triggers recall of that session's relevant content.</li>
+            <li>Recall crosses session boundaries — no per-chat silos.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Visible vs. Invisible Memory — AI's judgment <span class="tag">kernel</span></summary>
+        <div class="body">
+          <p>The AI decides, moment by moment, whether to show its work. Invisible: seamless answers. Visible: a collapsible <b>thought-signature panel</b> above the answer — which session it pulled from, what it took, why it's relevant now.</p>
+          <ul class="crit">
+            <li>When shown, the panel names the source session and the recalled content.</li>
+            <li>Panels appear only when the AI judges it matters; routine answers flow without them.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Repetition Guard — retrieval over regeneration <span class="tag">demo beat</span></summary>
+        <div class="body">
+          <p>Requesting something already produced in a past session triggers retrieval: the AI points back to the prior conversation and its content instead of generating a new variant. (The CV you asked for last week — "here it is," not a new one.)</p>
+          <ul class="crit">
+            <li>Repeating a past request yields a reference to the original, not a fresh regeneration.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>History View <span class="tag">surface</span></summary>
+        <div class="body">
+          <p>The hamburger toggles a list of past conversations; tapping one opens that conversation. History and memory read from the same store — two lenses on one truth.</p>
+          <ul class="crit">
+            <li>Every past session appears in the history list.</li>
+            <li>Opening a history item shows the full conversation.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Voice Input <span class="tag">kept, minimal</span></summary>
+        <div class="body">
+          <p>The mic button captures speech through the device/OS built-in speech-to-text — no custom STT or TTS. Rationale: "some thoughts get lost while typing."</p>
+          <ul class="crit">
+            <li>Dictated speech lands in the input as editable text before sending.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Failure & Recovery <span class="tag">error state</span></summary>
+        <div class="body">
+          <p>If the model call fails, the user sees an error message with a retry button. The sent message is held in short-term memory until a response arrives — nothing is lost or retyped.</p>
+          <ul class="crit">
+            <li>Network interrupted → error + retry appears; after retry, the original message is answered without retyping.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2>States & Boundaries</h2>
+    <div class="grid2">
+      <div class="card"><b>First use</b> — Get Started → onboarding; no accounts anywhere; single local user, data on device.</div>
+      <div class="card state"><b>Empty memory</b> — the AI asks for clarification rather than inventing continuity.</div>
+      <div class="card state"><b>Model failure</b> — error + retry; pending message survives in short-term memory until answered.</div>
+      <div class="card"><b>Persistence</b> — all conversations persist in unified long-term memory; short-term covers in-flight session state.</div>
+      <div class="card"><b>Memory visibility</b> — AI judgment only; no user toggle (ephemeral mode was proposed and cut).</div>
+      <div class="card"><b>Privacy</b> — one user; nothing leaves the device except model API calls.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div class="card"><b>Key decisions</b> — no auth (on-device data) · device-STT mic · AI-judged visibility · ephemeral mode cut · pure conversation in v1 · Gemini/Claude look, avoid bulky long responses.</div>
+      <div class="card"><b>Deferred / non-goals</b> — files & artifacts library (first in line, repetition rationale) · memory dashboard · critique mode · multi-user/cloud sync · custom STT/TTS · mobile · deployment · fine-tuning.</div>
+    </div>
+    <p style="margin-top:12px; font-size:13.5px; color:var(--muted)"><b style="color:var(--ink)">Open questions → 4-spec:</b> storage engine, ORM & framework (learner leans SQLite); keyword-retrieval quality bar; dark vs. light theme. None block this PRD; the first two must be resolved before spec approval.</p>
+  </section>
+
+  <footer>Markdown is canonical: <code>devpost/prd.md</code> · status: <code>approved</code> · companion regenerates after any revision</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scope — Personal AI That Remembers (working title)</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b24; --panel2:#1c2330; --line:#2a3342;
+    --ink:#e8edf4; --muted:#9aa7ba; --accent:#5eead4; --accent2:#818cf8;
+    --warn:#fbbf24; --cut:#f87171; --ok:#34d399;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--ink); line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:48px 20px 80px;
+  }
+  .wrap{max-width:960px; margin:0 auto}
+  .kicker{color:var(--accent); font-size:12px; letter-spacing:.18em; text-transform:uppercase; font-weight:600}
+  h1{font-size:clamp(28px,4vw,40px); line-height:1.15; margin:10px 0 6px}
+  .oneline{color:var(--muted); font-size:18px; max-width:46em}
+  .badges{display:flex; gap:8px; flex-wrap:wrap; margin:18px 0 8px}
+  .badge{font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel)}
+  .badge.draft{color:var(--warn); border-color:#4a3f1d}
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-top:18px}
+  h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent2); margin-bottom:12px}
+  p{margin-bottom:10px}
+  .say{border-left:3px solid var(--accent2); padding:8px 14px; color:var(--muted); font-style:italic; margin:10px 0; background:var(--panel2); border-radius:0 8px 8px 0}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .bands{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:6px}
+  @media (max-width:720px){.bands{grid-template-columns:1fr}}
+  details{background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  summary{cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:13px 16px; font-weight:600; font-size:14px}
+  summary::-webkit-details-marker{display:none}
+  summary .n{font-size:12px; color:var(--muted); font-weight:500; border:1px solid var(--line); border-radius:999px; padding:1px 9px}
+  details .body{padding:0 16px 14px; font-size:13.5px; color:var(--muted)}
+  details .body ul{margin-left:18px}
+  details .body li{margin-bottom:8px}
+  details .body li b{color:var(--ink)}
+  details.now summary{color:var(--ok)}
+  details.later summary{color:var(--warn)}
+  details.cut summary{color:var(--cut)}
+  .diagram{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px; margin-top:6px}
+  .diagram svg{width:100%; height:auto; display:block}
+  footer{margin-top:26px; color:var(--muted); font-size:13px; text-align:center}
+  footer code{color:var(--ink); background:var(--panel2); padding:2px 7px; border-radius:6px; border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Devpost Learn · 2-scope · Review companion</div>
+  <h1>Personal AI That Remembers <span style="color:var(--muted);font-weight:400">(working title)</span></h1>
+  <p class="oneline">A personal AI chat that actually remembers — one unified memory across all sessions, so a new conversation never starts from a clean slate.</p>
+  <div class="badges">
+    <span class="badge" style="color:var(--ok);border-color:#1d4a38">status: approved</span>
+    <span class="badge">single local user</span>
+    <span class="badge">RAG + hosted model — no training</span>
+    <span class="badge">local demo · deployment optional</span>
+    <span class="badge">2–4 h active work</span>
+  </div>
+  <section>
+    <h2>How it hangs together</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Diagram: the user says let's continue, the unified memory feeds the core loop, and the proof is a fresh session that is not a clean slate">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5eead4"/>
+          </marker>
+          <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#818cf8"/>
+          </marker>
+        </defs>
+        <rect x="30" y="120" width="180" height="84" rx="12" fill="#161b24" stroke="#2a3342"/>
+        <text x="120" y="152" text-anchor="middle" fill="#e8edf4" font-size="15" font-weight="600">You</text>
+        <text x="120" y="176" text-anchor="middle" fill="#9aa7ba" font-size="12">opens a brand-new session</text>
+        <rect x="300" y="90" width="300" height="144" rx="12" fill="#161b24" stroke="#5eead4" stroke-width="1.5"/>
+        <text x="450" y="120" text-anchor="middle" fill="#5eead4" font-size="15" font-weight="600">Core loop</text>
+        <text x="450" y="146" text-anchor="middle" fill="#e8edf4" font-size="13">"let's continue" → picks up the thread</text>
+        <text x="450" y="168" text-anchor="middle" fill="#e8edf4" font-size="13">old sessions resurface on keywords</text>
+        <text x="450" y="190" text-anchor="middle" fill="#9aa7ba" font-size="12">invisible by default · visible on demand</text>
+        <text x="450" y="212" text-anchor="middle" fill="#9aa7ba" font-size="12">one unified memory, not per-chat silos</text>
+        <rect x="690" y="120" width="180" height="84" rx="12" fill="#161b24" stroke="#2a3342"/>
+        <text x="780" y="150" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="600">The proof</text>
+        <text x="780" y="172" text-anchor="middle" fill="#9aa7ba" font-size="12">a fresh session that</text>
+        <text x="780" y="190" text-anchor="middle" fill="#9aa7ba" font-size="12">isn't a clean slate</text>
+        <line x1="210" y1="162" x2="292" y2="162" stroke="#5eead4" stroke-width="2" marker-end="url(#arr)"/>
+        <text x="251" y="150" text-anchor="middle" fill="#9aa7ba" font-size="11">talks</text>
+        <line x1="600" y1="162" x2="682" y2="162" stroke="#5eead4" stroke-width="2" marker-end="url(#arr)"/>
+        <text x="641" y="150" text-anchor="middle" fill="#9aa7ba" font-size="11">demonstrated in</text>
+        <text x="641" y="205" text-anchor="middle" fill="#9aa7ba" font-size="11">a 1-minute demo</text>
+        <g>
+          <path d="M330 262 a45 12 0 0 0 90 0 v-22 a45 12 0 0 0 -90 0 z" fill="#1c2330" stroke="#818cf8"/>
+          <ellipse cx="375" cy="240" rx="45" ry="12" fill="#1c2330" stroke="#818cf8"/>
+        </g>
+        <text x="375" y="304" text-anchor="middle" fill="#9aa7ba" font-size="12">Unified memory — RAG over stored sessions, hosted model</text>
+        <path d="M425 240 C 520 236 550 224 560 234" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#arr2)"/>
+        <text x="545" y="262" text-anchor="middle" fill="#9aa7ba" font-size="11">feeds every reply</text>
+      </svg>
+    </div>
+  </section>
+  <section>
+    <h2>The Unique Kernel</h2>
+    <p><b>Memory with judgment.</b> The AI reliably carries context across sessions and knows when a memory applies versus when it should be disregarded — seamless by default, with visible receipts (<i>"pulling from your Oct 2 session…"</i>) when proof matters. Today's chatbots forget nearly 100% of conversations; a new chat is a clean slate, and users have to keep saying "remember we discussed this." This one doesn't.</p>
+  </section>
+
+  <section>
+    <h2>Who It's For</h2>
+    <p>The learner themself, first: someone who juggles seven chatbots daily (Claude, Gemini, ChatGPT, Grok, Kimi, Qwen, DeepSeek), works on thought-oriented ideas over weeks and months, and is tired of re-explaining context and getting <i>"I have no memory of such a discussion."</i> Built for one local user; useful to others is a later ambition, not a v1 requirement.</p>
+  </section>
+
+  <section>
+    <h2>The Core Loop</h2>
+    <p>Open the app — even a brand-new session — and say <b>"let's continue."</b> The AI picks up the thread:</p>
+    <p class="say">"yesterday we looked at X, today we move on to Y."</p>
+    <p>No hunting through session history. As the conversation touches older ground, past sessions resurface on their own via keyword-based recall, all from one unified memory. They come back because context accumulates instead of evaporating.</p>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div>
+        <h2>Inspiration & Identity</h2>
+        <p>The daily chatbots you use and their memory failures; the target feeling is <b>relief</b> — no juggling apps, no pasting chatbot A's answer into chatbot B just to grasp one concept. Voice: a thinking companion, not a flatterer — original, thought-oriented responses rather than "a pat on the shoulder or an unwarranted critique" (that tone lands fully in the later critique mode).</p>
+      </div>
+      <div>
+        <h2>Why This Matters to You</h2>
+        <p>In your words: current bots are "stateless," memory is "short-lived or flawed"; "I constantly have to tell them remember we discussed this." Memory is <b>the building block</b>; killing the app-juggling is a perk. The payoff you picture when using it: relief.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What "Working" Looks Like</h2>
+    <p>On screen, in under a minute of demo: open a fresh session, type <b>"let's continue,"</b> and the AI summarizes where the last session left off and proposes the next step — unprompted. Then the conversation brushes an older topic and the AI correctly resurfaces it (showing its source in visible mode). The "oh, that's cool" beat is the clean-slate session that isn't actually clean.</p>
+  </section>
+  <section>
+    <h2>Now · Later · Cut</h2>
+    <div class="bands">
+      <details class="now" open>
+        <summary>Now — in v1 <span class="n">4</span></summary>
+        <div class="body"><ul>
+          <li><b>Single-user chat app</b> — one local user, no accounts</li>
+          <li><b>Unified cross-session memory</b> — a first-class citizen: session (short-term) memory auto-promotes into long-term memory, uniquely persistent and scalable; long-term memory lives in a database, indexed for faster fetching. RAG over stored sessions; hosted API model, no training</li>
+          <li><b>"Let's continue" continuity</b> — new sessions pick up where the last left off</li>
+          <li><b>Keyword-based recall</b> — older sessions resurface when the conversation touches them; memory runs invisible (seamless) and visible (shows what it recalled, from where)</li>
+        </ul></div>
+      </details>
+      <details class="later">
+        <summary>Later — worth doing <span class="n">4</span></summary>
+        <div class="body"><ul>
+          <li><b>Critique / second-opinion mode</b> — original, thought-oriented pushback; replaces carrying chatbot A's answer to chatbot B. Builds on memory, so it comes after</li>
+          <li><b>Memory dashboard</b> — view, edit, delete what the AI remembers</li>
+          <li><b>Deeper long-term profile</b> — goals and ongoing projects tracked over months</li>
+          <li><b>Fine-tuned local model</b> — served with Microsoft Foundry Local</li>
+        </ul></div>
+      </details>
+      <details class="cut">
+        <summary>Cut — with reasons <span class="n">4</span></summary>
+        <div class="body"><ul>
+          <li><b>Fine-tuning / model training</b> — v1 proves the idea with RAG + a deployed model</li>
+          <li><b>Multi-user accounts & onboarding</b> — one local user proves the kernel</li>
+          <li><b>Mobile app & voice</b> — the kernel is memory, not modality</li>
+          <li><b>Deployment / hosting</b> — the hackathon targets a local demo; deployment is optional</li>
+        </ul></div>
+      </details>
+    </div>
+  </section>
+
+  <footer>Markdown is canonical: <code>devpost/scope.md</code> · status: <code>approved</code> · companion regenerates after any revision</footer>
+</div>
+</body>
+</html>

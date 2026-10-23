@@ -1,0 +1,17 @@
+# Personal learning context — kept out of commits by default
+/devpost/learner-profile.md
+
+# Local credential files — never commit secrets (a secret-free .env.example is fine)
+.env
+.env.*
+!.env.example
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local data — the SQLite memory store
+/data/

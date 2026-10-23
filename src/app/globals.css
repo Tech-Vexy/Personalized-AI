@@ -1,0 +1,183 @@
+/* -------------------------------------------------------------------------
+   Design tokens — Gemini/Claude-like: calm, refined, airy (spec.md > Look and
+   Feel). Both palettes ship; the app follows the device via
+   prefers-color-scheme. Interface copy: plain, confident, no exclamation marks.
+------------------------------------------------------------------------- */
+:root {
+  color-scheme: light dark;
+
+  --bg: #faf9f6;        /* warm off-white */
+  --surface: #ffffff;
+  --panel: #f2f0ea;     /* panels tinted slightly from the surface */
+  --border: #e7e4dc;
+  --ink: #21201c;
+  --ink-soft: #716e65;
+  --accent: #96633d;
+  --danger: #a33a2a;
+
+  --column: 68ch;       /* the airy text column */
+  --radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1d1b;
+    --surface: #242422;
+    --panel: #2b2b28;
+    --border: #383732;
+    --ink: #eceae4;     /* soft white on deep neutral */
+    --ink-soft: #a7a49b;
+    --accent: #c48f66;
+    --danger: #d4816f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- app frame ---------------------------------------------------------- */
+.app { display: flex; flex-direction: column; height: 100dvh; }
+
+.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.app-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+.app-title span { font-weight: 400; color: var(--ink-soft); }
+
+/* --- chat ---------------------------------------------------------------- */
+.chat { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+
+.chat-loading,
+.chat-empty {
+  height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 24px;
+}
+.chat-loading { color: var(--ink-soft); }
+.chat-empty-title { margin: 0 0 8px; font-size: 21px; font-weight: 550; }
+.chat-empty-sub { margin: 0; max-width: 44ch; color: var(--ink-soft); line-height: 1.6; }
+
+.chat-column {
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 34px 24px 20px;
+  display: flex; flex-direction: column; gap: 30px;
+  line-height: 1.72;
+}
+
+.msg-user { align-self: flex-end; max-width: 85%; }
+.msg-user-text {
+  margin: 0; padding: 11px 16px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 18px 18px 5px 18px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+.msg-assistant { align-self: stretch; }
+
+.msg-failed {
+  margin-top: 8px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: var(--danger);
+}
+.msg-retry {
+  font: inherit; font-size: 13px; cursor: pointer;
+  padding: 3px 12px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink);
+}
+.msg-retry:hover { border-color: var(--danger); color: var(--danger); }
+
+/* typing indicator — three slow, calm dots */
+.typing { display: flex; gap: 5px; padding: 6px 2px; }
+.typing span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ink-soft); opacity: 0.35;
+  animation: typing 1.4s ease-in-out infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 0.9; transform: translateY(-3px); }
+}
+
+/* --- composer ------------------------------------------------------------ */
+.composer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 14px 24px 12px;
+}
+.composer-inner {
+  max-width: var(--column); margin: 0 auto;
+  display: flex; align-items: flex-end; gap: 10px;
+}
+.composer textarea {
+  flex: 1; resize: none;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--ink);
+  padding: 11px 15px; font: inherit; line-height: 1.55;
+  max-height: 200px; outline: none;
+}
+.composer textarea:focus-visible { border-color: var(--accent); }
+.composer textarea::placeholder { color: var(--ink-soft); }
+.composer-send {
+  border: none; border-radius: 12px; cursor: pointer;
+  background: var(--ink); color: var(--bg);
+  font: inherit; font-weight: 500;
+  padding: 10px 18px;
+}
+.composer-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.composer-send:disabled { opacity: 0.4; cursor: default; }
+.composer-hint {
+  max-width: var(--column); margin: 8px auto 0;
+  font-size: 12.5px; color: var(--ink-soft); text-align: center;
+}
+
+/* --- markdown — airy long-form, never bulky ------------------------------- */
+.markdown { overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p { margin: 0 0 1.1em; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 {
+  margin: 1.7em 0 0.6em; line-height: 1.32; font-weight: 600;
+}
+.markdown h1 { font-size: 1.35em; }
+.markdown h2 { font-size: 1.2em; }
+.markdown h3 { font-size: 1.06em; }
+.markdown h4 { font-size: 1em; }
+.markdown ul, .markdown ol { margin: 0 0 1.1em; padding-left: 1.55em; }
+.markdown li { margin: 0.32em 0; }
+.markdown li > p { margin: 0.2em 0; }
+.markdown blockquote {
+  margin: 0 0 1.1em; padding: 0.05em 0 0.05em 1.05em;
+  border-left: 3px solid var(--border); color: var(--ink-soft);
+}
+.markdown code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.08em 0.35em;
+}
+.markdown pre {
+  margin: 0 0 1.1em; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  overflow-x: auto;
+}
+.markdown pre code { background: none; border: none; padding: 0; font-size: 0.86em; }
+.markdown hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.markdown a { color: var(--accent); text-decoration: none; }
+.markdown a:hover { text-decoration: underline; }
+.markdown table { border-collapse: collapse; margin: 0 0 1.1em; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
