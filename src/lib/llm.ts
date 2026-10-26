@@ -28,7 +28,7 @@ export function apiKey(): string {
 
 /** The model id, read at call time so env overrides (.env.local) always win. */
 export function modelId(): string {
-  return process.env.NIM_MODEL ?? "z-ai/glm-5.3-flash";
+  return process.env.NIM_MODEL ?? "nvidia/nemotron-3.5-bolt-e4b";
 }
 
 export type ChatMessage = {
