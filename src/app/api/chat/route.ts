@@ -9,7 +9,7 @@ import {
   type ChatMessage,
   type EnvelopeSource,
 } from "@/lib/llm";
-import { recallMemories, extractMemories, findPriorDeliverables } from "@/lib/memory";
+import { recallMemories, extractMemories, findPriorDeliverables, isMetaMemoryQuery } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,12 +17,13 @@ export const runtime = "nodejs";
 /** Short-term memory: how much of the current session the model sees each turn. */
 const HISTORY_WINDOW = 30;
 
-const SYSTEM_PROMPT = `You are an insightful, highly competent personal thinking companion: original, direct, thoughtful, and genuinely helpful.
-You provide thorough, comprehensive, and well-developed answers. When exploring topics or addressing questions:
-- Provide depth, clarity, and complete explanations rather than brief surface-level summaries.
-- Unpack complex nuances, provide concrete examples, structure solutions, and offer actionable insights.
-- Do not make the user do all the heavy lifting by withholding substantive thoughts or asking superficial questions. Deliver real intellectual value and completeness in every turn.
-- Format with clean, readable Markdown (headings, clear paragraphs, code blocks, or structured lists when appropriate).`;
+const SYSTEM_PROMPT = `You are an insightful personal thinking companion built with a persistent long-term memory kernel.
+CORE PHILOSOPHY & MEMORY RULE:
+- You DO remember the user across sessions. That is your defining attribute.
+- NEVER claim "As an AI, I do not have personal memory of you across separate sessions" or "My interactions are stateless" or "I cannot remember past conversations".
+- When memories from earlier sessions are provided in the LONG-TERM MEMORY STORE below, you MUST synthesize and present them when the user asks what you know or remember about them, or when they relate to the conversation.
+- If the user asks what you know about them or who they are, summarize their background, name, projects, and interests directly and warmly from your memory.
+- Provide thorough, well-structured answers in clean Markdown. Think with the user and deliver substantive value.`;
 
 const ONBOARDING_SYSTEM_PROMPT = `You are a personal thinking companion having a brief, welcoming first conversation with the user to get to know them.
 Ask a few foundational facts about them (their name or how to address them, what projects or thinking they focus on, and how they like to work together) ONE question at a time.
@@ -105,13 +106,15 @@ export async function POST(req: Request) {
     .slice(-HISTORY_WINDOW)
     .map((m) => ({ role: m.role, content: m.content }));
 
-  // Long-term memory: keyword recall over the FTS index, relevance-floored,
-  // with session provenance. The current session is excluded.
+  // Long-term memory: keyword recall over the FTS index or meta-memory queries
   const recalled = recallMemories(text, active.id);
+  const isMeta = isMetaMemoryQuery(text);
   const memoryBlock = recalled.length
-    ? `\n\nLong-term memories from earlier sessions with this user, most relevant first (format: [session #id, date] content):\n${recalled
+    ? `\n\nLONG-TERM MEMORY STORE (Facts & topics remembered across earlier sessions with this user):\n${recalled
         .map((r) => `- [session #${r.sessionId}, ${r.date}] ${r.content}`)
-        .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one in sources. If none bear on this message, keep memory_used false.`
+        .join("\n")}\n\nIMPORTANT INSTRUCTION: Draw on these memories to answer the user accurately. If the user asks what you know about them or asks who they are, synthesize and share these known facts about them directly and warmly. Set memory_used to true and list each one in sources.`
+    : isMeta
+    ? `\n\nLONG-TERM MEMORY STORE: Currently empty (no prior memories saved yet). State honestly that you don't have past memories recorded yet for this user, but confirm you are ready to learn and remember.`
     : "";
 
   // Repetition guard (spec.md > Components > Recall engine):

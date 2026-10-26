@@ -50,13 +50,67 @@ export function keywordsFrom(text: string): string[] {
 }
 
 /**
+ * Checks if the user is asking a meta-memory question about what the AI knows or remembers
+ * (e.g. "What do you know about me?", "Who am I?", "What do you remember about our work?").
+ */
+export function isMetaMemoryQuery(text: string): boolean {
+  const norm = text.toLowerCase().trim().replace(/[.,!?;:'"’“”]/g, " ");
+  const patterns = [
+    /what\s+(do\s+you\s+)?know\s+(about\s+)?(me|myself)/i,
+    /what\s+(do\s+you\s+)?remember(\s+about\s+(me|us))?/i,
+    /who\s+am\s+i/i,
+    /what\s+is\s+my\s+name/i,
+    /whats\s+my\s+name/i,
+    /tell\s+me\s+about\s+(myself|me)/i,
+    /what\s+have\s+we\s+(talked|discussed|worked|done)/i,
+    /what\s+are\s+my\s+(projects|interests|goals)/i,
+    /do\s+you\s+(know|remember)\s+me/i,
+    /what\s+is\s+in\s+(your|my)\s+memory/i,
+    /summarize\s+what\s+you\s+know/i,
+  ];
+  return patterns.some((p) => p.test(norm));
+}
+
+/**
  * Recall: FTS5 MATCH with prefix wildcards (e.g. "financ"* matches "finance" and "financial")
  * → bm25 ranking → relevance floor → memories with session provenance.
+ * For meta-memory questions, returns all durable profile and project memories.
  */
 export function recallMemories(
   userMessage: string,
   excludeSessionId?: number,
 ): RecalledMemory[] {
+  // If the user asks what we know/remember about them, surface all durable memories directly
+  if (isMetaMemoryQuery(userMessage)) {
+    const allRows = sqlite
+      .prepare(
+        `SELECT m.id          AS memoryId,
+                m.content     AS content,
+                m.source_session_id AS sessionId,
+                s.created_at  AS createdAt,
+                -2.0          AS rank
+         FROM memories m
+         JOIN sessions s ON s.id = m.source_session_id
+         ORDER BY m.id DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{
+      memoryId: number;
+      content: string;
+      sessionId: number;
+      createdAt: number;
+      rank: number;
+    }>;
+
+    return allRows.map((r) => ({
+      memoryId: r.memoryId,
+      sessionId: r.sessionId,
+      date: new Date(r.createdAt).toISOString().slice(0, 10),
+      content: r.content,
+      rank: r.rank,
+    }));
+  }
+
   const words = keywordsFrom(userMessage);
   if (words.length === 0) return [];
 
