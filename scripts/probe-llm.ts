@@ -1,12 +1,18 @@
 /**
- * Slice 3 provider probe (devpost/checklist.md > slice 3):
- * prove gemini-3.8-flash on Google AI answers inside the JSON envelope, and
- * record the latency / free-tier rate-limit situation for the demo.
+ * Provider probe (devpost/checklist.md > slice 1/3):
+ * prove NVIDIA NIM answers inside the JSON envelope, and
+ * record the latency / rate-limit situation for the demo.
  * Run: npm run probe
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { answerWithEnvelope, modelId, apiKey, DEFAULT_BASE_URL, EnvelopeParseError } from "../src/lib/llm";
+import {
+  answerWithEnvelope,
+  modelId,
+  apiKey,
+  DEFAULT_BASE_URL,
+  EnvelopeParseError,
+} from "../src/lib/llm";
 
 function loadEnvLocal(): void {
   try {
@@ -24,8 +30,11 @@ function loadEnvLocal(): void {
 
 async function main(): Promise<void> {
   loadEnvLocal();
-  if (!apiKey()) {
-    console.error("FAIL: GOOGLE_API_KEY is not set. Create a key at https://aistudio.google.com and put it in .env.local (see .env.example).");
+  const key = apiKey();
+  if (!key) {
+    console.error(
+      "FAIL: NVIDIA_API_KEY is not set. Create a key at https://build.nvidia.com and put it in .env.local (see .env.example).",
+    );
     process.exit(1);
   }
 
@@ -33,8 +42,8 @@ async function main(): Promise<void> {
   const userMessage = `I keep juggling several AI chatbots because each one lacks something I look for. If you could change one thing about how chatbots handle memory, what would it be — and what would break first if you got it wrong?`;
 
   console.log(`model:    ${modelId()}`);
-  console.log(`endpoint: ${process.env.GEMINI_BASE_URL ?? DEFAULT_BASE_URL}`);
-  console.log("calling Google AI (Gemini)…");
+  console.log(`endpoint: ${process.env.NIM_BASE_URL ?? DEFAULT_BASE_URL}`);
+  console.log("calling NVIDIA NIM…");
   try {
     const { envelope, meta } = await answerWithEnvelope({
       system,
@@ -58,7 +67,7 @@ async function main(): Promise<void> {
     } else {
       console.log("rate-limit headers: none returned");
     }
-    console.log("\nPASS: Gemini returned a valid JSON envelope.");
+    console.log("\nPASS: NVIDIA NIM returned a valid JSON envelope.");
   } catch (error) {
     if (error instanceof EnvelopeParseError) {
       console.error(
@@ -71,13 +80,13 @@ async function main(): Promise<void> {
       );
       console.error(error instanceof Error ? error.message : error);
       if (status === 401 || status === 403)
-        console.error("Check GOOGLE_API_KEY in .env.local (create one at https://aistudio.google.com).");
+        console.error("Check NVIDIA_API_KEY in .env.local (create one at https://build.nvidia.com).");
       if (status === 404)
         console.error(
-          `Model "${modelId()}" may not exist for this key — try GEMINI_MODEL with the id shown in AI Studio (e.g. gemini-3.8-flash).`,
+          `Model "${modelId()}" may not exist for this key — try NIM_MODEL with the id shown on build.nvidia.com.`,
         );
       if (status === 429)
-        console.error("Free-tier rate limit (RPM/RPD) hit — wait a minute or check the limits page; record this for the demo.");
+        console.error("Rate limit hit — wait a minute or check your credits; record this for the demo.");
     }
     process.exit(1);
   }

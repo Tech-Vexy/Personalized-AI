@@ -15,3 +15,10 @@ next-env.d.ts
 
 # Local data — the SQLite memory store
 /data/
+
+# Agent harness & skills
+.agents/
+.claude/
+agent/
+skills-lock.json
+

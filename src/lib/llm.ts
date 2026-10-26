@@ -1,31 +1,34 @@
 import OpenAI from "openai";
 
 /**
- * The only module in the app that talks to Google AI — Gemini via the
- * OpenAI-compatible endpoint (spec.md > Stack).
+ * The only module in the app that talks to the LLM provider (NVIDIA NIM).
  * Every model call in the product goes through here, so a provider or
- * model swap stays a one-file change.
+ * model swap stays a one-file change (spec.md > Stack).
  */
 
-export const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+export const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
 /**
- * gemini-3.8-flash is a fast Flash model; 60s leaves headroom for its
- * thinking pass plus a long envelope (Google counts thinking tokens against
- * max_output_tokens). Re-baselined from the GLM-era 180s after the swap —
- * evidence recorded in devpost/checklist.md (slice 3).
+ * GLM-5.3-flash is a reasoning model: measured NIM latency is ~70-170s per
+ * call at reasoning_effort "low". 180s timeout ensures completions finish.
  */
-export const REQUEST_TIMEOUT_MS = 60_000;
-/** Room for Gemini's thinking pass AND the JSON envelope answer. */
+export const REQUEST_TIMEOUT_MS = 180_000;
+/** Room for the model's reasoning pass AND the JSON envelope answer. */
 export const MAX_COMPLETION_TOKENS = 2048;
 
-/** Google AI Studio key; GEMINI_API_KEY accepted as the common alias. */
+/** NVIDIA NIM API key (supports NVIDIA_API_KEY or NIM_API_KEY). */
 export function apiKey(): string {
-  return process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY ?? "";
+  return (
+    process.env.NVIDIA_API_KEY ??
+    process.env.NIM_API_KEY ??
+    process.env.GOOGLE_API_KEY ??
+    process.env.GEMINI_API_KEY ??
+    ""
+  );
 }
 
 /** The model id, read at call time so env overrides (.env.local) always win. */
 export function modelId(): string {
-  return process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+  return process.env.NIM_MODEL ?? "z-ai/glm-5.3-flash";
 }
 
 export type ChatMessage = {
@@ -75,7 +78,7 @@ let _client: OpenAI | null = null;
 export function getClient(): OpenAI {
   _client ??= new OpenAI({
     apiKey: apiKey(),
-    baseURL: process.env.GEMINI_BASE_URL ?? DEFAULT_BASE_URL,
+    baseURL: process.env.NIM_BASE_URL ?? DEFAULT_BASE_URL,
     timeout: REQUEST_TIMEOUT_MS,
   });
   return _client;
@@ -100,18 +103,19 @@ function grabRateLimit(headers: Headers): Record<string, string> {
 /** One raw chat-completion call. No other file may call the model directly. */
 export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
   const started = Date.now();
+  const model = modelId();
+  const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
+    model,
+    messages,
+    temperature: 0.7,
+    max_tokens: MAX_COMPLETION_TOKENS,
+  };
+  if (model.includes("glm") || model.includes("flash")) {
+    (params as unknown as Record<string, unknown>).reasoning_effort = "low";
+  }
+
   const { data, response } = await getClient().chat.completions
-    .create({
-      model: modelId(),
-      messages,
-      temperature: 0.7,
-      max_tokens: MAX_COMPLETION_TOKENS,
-      // Gemini 3.x models think by default; thinking tokens count against
-      // max_tokens, and an uncapped budget shows up as latency. "low" keeps
-      // quality for conversational turns while capping the burn — verified
-      // against the live API at probe time (devpost/checklist.md, slice 3).
-      reasoning_effort: "low",
-    })
+    .create(params)
     .withResponse();
   return {
     raw: data.choices[0]?.message?.content ?? "",
@@ -156,13 +160,21 @@ function parseEnvelope(raw: string): Envelope {
         ];
       })
     : [];
-  return { answer, memory_used: obj.memory_used === true, sources, onboarding_complete: typeof obj.onboarding_complete === "boolean" ? obj.onboarding_complete : undefined };
+  return {
+    answer,
+    memory_used: obj.memory_used === true,
+    sources,
+    onboarding_complete:
+      typeof obj.onboarding_complete === "boolean"
+        ? obj.onboarding_complete
+        : undefined,
+  };
 }
 
 /**
  * The answer call: system prompt + conversation in, envelope out.
- * One repair re-prompt on malformed JSON; after that the caller decides
- * how to degrade (spec.md > Important Failure Modes).
+ * One repair re-prompt on malformed JSON; after that the caller degrades
+ * gracefully to plain text without a panel (spec.md > Important Failure Modes).
  */
 export async function answerWithEnvelope(params: {
   system: string;
@@ -186,7 +198,15 @@ export async function answerWithEnvelope(params: {
     try {
       return { envelope: parseEnvelope(repair.raw), meta: repair };
     } catch {
-      throw new EnvelopeParseError(repair.raw);
+      // Degrade gracefully per spec.md > Important Failure Modes
+      return {
+        envelope: {
+          answer: repair.raw || first.raw,
+          memory_used: false,
+          sources: [],
+        },
+        meta: repair,
+      };
     }
   }
 }
