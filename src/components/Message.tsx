@@ -32,11 +32,13 @@ export default function Message({
   failed,
   failReason,
   onRetry,
+  onOpenVault,
 }: {
   message: WireMessage;
   failed?: boolean;
   failReason?: string;
   onRetry?: () => void;
+  onOpenVault?: () => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -202,7 +204,7 @@ export default function Message({
 
   return (
     <div className="msg msg-assistant">
-      {showPanel && <ThoughtSignature sources={message.sources!} />}
+      {showPanel && <ThoughtSignature sources={message.sources!} onOpenVault={onOpenVault} />}
       <div className="markdown">
         <Markdown>{message.content}</Markdown>
       </div>

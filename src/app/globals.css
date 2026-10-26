@@ -1018,3 +1018,498 @@ body {
   cursor: default;
 }
 
+/* --- App Header Right & Memory Vault Trigger ----------------------------- */
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vault-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--panel) 100%);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.vault-header-btn:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(150, 99, 61, 0.12);
+}
+
+.vault-header-btn-icon {
+  font-size: 14px;
+}
+
+.vault-header-btn-count {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(150, 99, 61, 0.16) 0%, rgba(196, 143, 102, 0.24) 100%);
+  color: var(--accent);
+  border: 1px solid rgba(150, 99, 61, 0.25);
+}
+
+/* --- Sidebar Footer & Vault Tile ---------------------------------------- */
+.sidebar-footer {
+  padding: 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.sidebar-vault-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--surface) 100%);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.sidebar-vault-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(150, 99, 61, 0.1);
+  transform: translateY(-1px);
+}
+
+.sidebar-vault-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sidebar-vault-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.sidebar-vault-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-vault-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.sidebar-vault-count {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sidebar-vault-arrow {
+  color: var(--ink-soft);
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-vault-btn:hover .sidebar-vault-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+/* --- Thought Signature Vault Button ------------------------------------- */
+.thought-sig-footer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.thought-sig-vault-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.thought-sig-vault-btn:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+/* --- Memory Vault Modal ------------------------------------------------- */
+.vault-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(18, 18, 16, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vault-modal-container {
+  width: 100%;
+  max-width: 680px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.vault-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--surface) 100%);
+}
+
+.vault-title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.vault-icon-badge {
+  font-size: 24px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.vault-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.vault-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  max-width: 48ch;
+}
+
+.vault-close-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 7px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.vault-close-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-soft);
+  background: var(--panel);
+}
+
+/* Add memory form */
+.vault-add-form {
+  padding: 14px 24px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.vault-add-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.vault-add-input {
+  flex: 1;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 13.5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.vault-add-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.vault-add-btn {
+  padding: 0 14px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(150, 99, 61, 0.85) 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(150, 99, 61, 0.3);
+}
+
+.vault-add-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-0.5px);
+}
+
+.vault-add-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.vault-notice {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Search bar */
+.vault-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.vault-search-input-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.vault-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+
+.vault-search-input {
+  width: 100%;
+  padding: 7px 30px 7px 32px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.vault-search-input:focus {
+  border-color: var(--accent);
+}
+
+.vault-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.vault-count-badge {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+/* Memory List */
+.vault-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vault-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--panel) 100%);
+  transition: all 0.15s ease;
+}
+
+.vault-card:hover {
+  border-color: rgba(150, 99, 61, 0.45);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.vault-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vault-card-text {
+  margin: 0;
+  font-size: 13.8px;
+  line-height: 1.55;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.vault-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.vault-tag-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 500;
+  max-width: 32ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.vault-tag-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-card-delete-btn {
+  opacity: 0.35;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.vault-card:hover .vault-card-delete-btn,
+.vault-card:focus-within .vault-card-delete-btn {
+  opacity: 0.7;
+}
+
+.vault-card-delete-btn:hover {
+  opacity: 1 !important;
+  color: var(--danger);
+  border-color: rgba(212, 129, 111, 0.3);
+  background: var(--surface);
+}
+
+.vault-card-delete-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.vault-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.vault-empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.vault-empty-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+

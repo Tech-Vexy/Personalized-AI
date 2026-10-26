@@ -38,6 +38,42 @@ export type RecalledMemory = {
   rank: number;
 };
 
+/**
+ * Fetches the most foundational ambient memories about the user
+ * (identity, primary projects, preferences) so the AI never acts like a stranger.
+ */
+export function getCoreMemories(
+  excludeSessionId?: number,
+  limit: number = 6,
+): RecalledMemory[] {
+  const rows = sqlite
+    .prepare(
+      `SELECT m.id          AS memoryId,
+              m.content     AS content,
+              m.source_session_id AS sessionId,
+              s.created_at  AS createdAt
+       FROM memories m
+       JOIN sessions s ON s.id = m.source_session_id
+       WHERE (? IS NULL OR m.source_session_id != ?)
+       ORDER BY m.id DESC
+       LIMIT ?`,
+    )
+    .all(excludeSessionId ?? null, excludeSessionId ?? null, limit) as Array<{
+    memoryId: number;
+    content: string;
+    sessionId: number;
+    createdAt: number;
+  }>;
+
+  return rows.map((r) => ({
+    memoryId: r.memoryId,
+    sessionId: r.sessionId,
+    date: new Date(r.createdAt).toISOString().slice(0, 10),
+    content: r.content,
+    rank: -1.0,
+  }));
+}
+
 /** Distinctive words from the user's message — the recall query terms. */
 export function keywordsFrom(text: string): string[] {
   const words = text
@@ -151,27 +187,51 @@ export function recallMemories(
 
 /**
  * Smart distillation gate: avoids wasting round-trips and API quota
- * on small talk, trivial one-word replies, or continuity triggers.
+ * on small talk, trivial one-word replies, continuity triggers, or meta-memory queries.
  */
 export function shouldExtractMemories(userMessage: string): boolean {
-  const trimmed = userMessage.trim().toLowerCase().replace(/[.,!?;:]/g, "");
-  if (trimmed.length < 15) {
-    const trivial = new Set([
-      "hi", "hello", "hey", "thanks", "thank you", "ok", "okay",
-      "cool", "yes", "no", "yep", "nope", "sure", "bye", "goodbye",
-      "let's continue", "lets continue", "continue",
-    ]);
-    if (trivial.has(trimmed)) return false;
+  if (isMetaMemoryQuery(userMessage)) {
+    return false;
   }
+
+  const trimmed = userMessage.trim().toLowerCase().replace(/[.,!?;:]/g, "");
+  const trivial = new Set([
+    "hi", "hello", "hey", "thanks", "thank you", "ok", "okay",
+    "cool", "yes", "no", "yep", "nope", "sure", "bye", "goodbye",
+    "let's continue", "lets continue", "continue", "whats up", "what's up",
+    "good morning", "good evening", "how are you", "who are you",
+  ]);
+  if (trivial.has(trimmed)) return false;
+
   const words = keywordsFrom(userMessage);
   return words.length >= 2;
 }
 
-const EXTRACTION_SYSTEM = `You distill durable long-term memories from one exchange with the user. Reply with ONLY a JSON object — no markdown fences, no text before or after it:
-{"memories": ["..."]}
-- At most 2 short third-person statements (under 200 characters each) capturing key facts, decisions, preferences, projects, goals, or commitments worth carrying into future conversations.
-- Never include small talk, transient states, or speculation.
-- If nothing qualifies, return {"memories": []}.`;
+const EXTRACTION_SYSTEM = `You are the memory distillation kernel for a personal AI companion where long-term memory is the central commodity.
+Your sole job is to distill durable, long-term knowledge about the USER from the exchange.
+
+WHAT CAN BE REMEMBERED (Durable facts about the USER):
+- User Identity & Background: Name, profession, location, expertise, affiliations.
+- Projects & Systems: Products they are building, codebases, architectural decisions, technical choices.
+- Durable Preferences & Working Style: Tone preferences, how they like answers structured, persistent technical biases.
+- Life Facts & Constraints: Milestones, recurring commitments, plans, constraints, deadlines.
+- Explicit Directives: Anything the user explicitly asked to remember ("Remember that...", "Note down that...").
+
+WHAT MUST NEVER BE REMEMBERED (Strict Negative Constraints):
+- NEVER distill facts about the AI (e.g. NEVER "The AI is a thinking companion", NEVER "The assistant explained X").
+- NEVER distill conversational actions (e.g. NEVER "User greeted the assistant", NEVER "User asked a question").
+- NEVER distill transient session states (e.g. "User is currently testing", "Discussion is focused on X").
+- NEVER distill non-facts (e.g. "User's preference is undetermined").
+- NEVER distill small talk, trivia, or general code syntax.
+
+WHEN TO REMEMBER:
+- Only when the exchange revealed a genuine, durable truth about the user that will remain valuable weeks or months from now.
+- If nothing qualifies, return {"memories": []}.
+
+FORMAT:
+Reply with ONLY a JSON object — no markdown fences, no text before or after it:
+{"memories": ["Third-person statement about the user under 180 chars...", ...]}
+At most 2 concise statements per exchange.`;
 
 /**
  * The extraction call: distills the finished exchange into durable memories

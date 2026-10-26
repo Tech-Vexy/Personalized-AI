@@ -9,7 +9,13 @@ import {
   type ChatMessage,
   type EnvelopeSource,
 } from "@/lib/llm";
-import { recallMemories, extractMemories, findPriorDeliverables, isMetaMemoryQuery } from "@/lib/memory";
+import {
+  recallMemories,
+  extractMemories,
+  findPriorDeliverables,
+  isMetaMemoryQuery,
+  getCoreMemories,
+} from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,13 +23,29 @@ export const runtime = "nodejs";
 /** Short-term memory: how much of the current session the model sees each turn. */
 const HISTORY_WINDOW = 30;
 
-const SYSTEM_PROMPT = `You are an insightful personal thinking companion built with a persistent long-term memory kernel.
-CORE PHILOSOPHY & MEMORY RULE:
-- You DO remember the user across sessions. That is your defining attribute.
+const SYSTEM_PROMPT = `You are an insightful personal thinking companion built on a persistent memory kernel where long-term memory is the central commodity.
+
+CORE IDENTITY & MEMORY CAPABILITIES:
+- You DO possess durable, long-term memory across sessions. That is your defining purpose.
 - NEVER claim "As an AI, I do not have personal memory of you across separate sessions" or "My interactions are stateless" or "I cannot remember past conversations".
-- When memories from earlier sessions are provided in the LONG-TERM MEMORY STORE below, you MUST synthesize and present them when the user asks what you know or remember about them, or when they relate to the conversation.
-- If the user asks what you know about them or who they are, summarize their background, name, projects, and interests directly and warmly from your memory.
-- Provide thorough, well-structured answers in clean Markdown. Think with the user and deliver substantive value.`;
+- When memories from earlier sessions are provided in the LONG-TERM MEMORY STORE below, synthesize and integrate them seamlessly.
+
+WHAT CAN BE REMEMBERED (Memory Taxonomy):
+1. User Identity & Background: Name (e.g. Veldrine), profession, technical expertise, location, and background.
+2. Projects & Systems: What the user is building (e.g. Lumen personal finance app, UR5 robot arm calibration), architecture choices, stack decisions, and milestones.
+3. Durable Preferences & Style: Tone preferences, how they like ideas structured, technical biases (e.g. SQLite + FTS5 vs Vector DBs), and workflow habits.
+4. Real-World Context & Commitments: Deadlines, travel plans (e.g. Kyoto cherry blossom trip), personal recipes, lease details, and goals.
+5. Explicit Directives: Anything the user explicitly asks you to remember or store in the Memory Vault.
+
+WHEN TO REMEMBER:
+- Explicit: Whenever the user says "Remember this", "Note down", or saves a fact in the Memory Vault.
+- Implicit: In the background, durable facts, decisions, and preferences revealed during exchanges are automatically distilled into the persistent Memory Vault.
+- Negative Policy: Transient conversational filler ("hi", "thanks"), temporary moods, session-specific math/syntax lookups, and AI self-referential statements are strictly excluded to preserve vault signal.
+
+BEHAVIOR GUIDELINES:
+- If the user asks what you know about them or who they are, synthesize your accumulated memory directly, warmly, and concretely.
+- If the user asks what can be remembered or when you remember, articulate these exact memory taxonomy and timing principles clearly.
+- Provide thorough, well-structured answers in clean Markdown. Think alongside the user and deliver substantive depth.`;
 
 const ONBOARDING_SYSTEM_PROMPT = `You are a personal thinking companion having a brief, welcoming first conversation with the user to get to know them.
 Ask a few foundational facts about them (their name or how to address them, what projects or thinking they focus on, and how they like to work together) ONE question at a time.
@@ -106,16 +128,28 @@ export async function POST(req: Request) {
     .slice(-HISTORY_WINDOW)
     .map((m) => ({ role: m.role, content: m.content }));
 
-  // Long-term memory: keyword recall over the FTS index or meta-memory queries
+  // Long-term memory: episodic FTS recall + meta queries + ambient knowledge
   const recalled = recallMemories(text, active.id);
   const isMeta = isMetaMemoryQuery(text);
-  const memoryBlock = recalled.length
-    ? `\n\nLONG-TERM MEMORY STORE (Facts & topics remembered across earlier sessions with this user):\n${recalled
-        .map((r) => `- [session #${r.sessionId}, ${r.date}] ${r.content}`)
-        .join("\n")}\n\nIMPORTANT INSTRUCTION: Draw on these memories to answer the user accurately. If the user asks what you know about them or asks who they are, synthesize and share these known facts about them directly and warmly. Set memory_used to true and list each one in sources.`
-    : isMeta
-    ? `\n\nLONG-TERM MEMORY STORE: Currently empty (no prior memories saved yet). State honestly that you don't have past memories recorded yet for this user, but confirm you are ready to learn and remember.`
-    : "";
+
+  // Ambient core background (so the AI never acts like a stranger even on fresh topics)
+  const coreMemories = getCoreMemories(active.id, 6);
+  const recalledIds = new Set(recalled.map((r) => r.memoryId));
+  const additionalCore = coreMemories.filter((c) => !recalledIds.has(c.memoryId));
+
+  let memoryBlock = "";
+  if (recalled.length > 0) {
+    memoryBlock += `\n\nRELEVANT RECALLED MEMORIES (Specific facts & context matching current message):\n${recalled
+      .map((r) => `- [session #${r.sessionId}, ${r.date}] ${r.content}`)
+      .join("\n")}\nINSTRUCTION: Draw on these memories to answer the user accurately. If the user asks what you know about them or asks who they are, synthesize and share these known facts directly and warmly. Set memory_used to true and list each one in sources.`;
+  }
+  if (additionalCore.length > 0) {
+    memoryBlock += `\n\nAMBIENT MEMORY CONTEXT (Your accumulated long-term knowledge of this user across past sessions):\n${additionalCore
+      .map((c) => `- ${c.content}`)
+      .join("\n")}\nINSTRUCTION: Maintain continuous familiarity with the user using this ambient knowledge. You already know who they are, their projects, and their context.`;
+  } else if (!recalled.length && isMeta) {
+    memoryBlock = `\n\nLONG-TERM MEMORY STORE: Currently empty (no prior memories saved yet). State honestly that you don't have past memories recorded yet for this user, but confirm you are ready to learn and remember.`;
+  }
 
   // Repetition guard (spec.md > Components > Recall engine):
   const priorDeliverables = findPriorDeliverables(text, active.id);
