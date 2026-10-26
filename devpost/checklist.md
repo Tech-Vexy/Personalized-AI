@@ -59,7 +59,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: This is the beat you scoped the whole app around — open a brand-new session, say "let's continue", and judge whether the pickup feels like relief or a parlor trick.
   Commit: `Add session continuity and new-session flow`
 
-- [ ] **6. First launch: Get Started and conversational onboarding**
+- [x] **6. First launch: Get Started and conversational onboarding**
   Becomes usable: A fresh data file now starts at a Get Started page, flows into an onboarding *conversation* (the AI asks a few facts one at a time, no form UI), and lands in the main chat — which can already reference the seeded facts on its own.
   Why now: Completes the PRD's front door and seeds the store the kernel reads; the last journey piece needed before the navigation and guard polish.
   PRD ref: `prd.md > The Core Journey` (steps 1–2), `prd.md > Onboarding & Memory Seeding`

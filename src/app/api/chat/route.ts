@@ -1,6 +1,6 @@
 import { asc, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { memories, messages, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
+import { memories, messages, profile, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
 import { answerWithEnvelope, type ChatMessage } from "@/lib/llm";
 import { recallMemories, extractMemories } from "@/lib/memory";
 
@@ -12,6 +12,11 @@ const HISTORY_WINDOW = 30;
 
 const SYSTEM_PROMPT = `You are a personal thinking companion: original, direct, no flattery, no unwarranted critique. Think with the user, not for them.
 Write calm, plain markdown — short paragraphs, generous breathing room, lists only when they earn their place.`;
+
+const ONBOARDING_SYSTEM_PROMPT = `You are a personal thinking companion having a brief, welcoming first conversation with the user to get to know them.
+Ask a few foundational facts about them (their name or how to address them, what projects or thinking they focus on, and how they like to work together) ONE question at a time.
+Keep your tone calm, direct, and conversational. Do not present a numbered form or long list of questions.
+When you have learned 2-3 key facts and have enough to start working together, set "onboarding_complete": true in your JSON envelope and welcome them. Otherwise set "onboarding_complete": false.`;
 
 /** Titles come from the first user words (spec.md > Data Model). */
 function deriveTitle(text: string): string {
@@ -51,7 +56,12 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { message, sessionId } = (body ?? {}) as { message?: unknown; sessionId?: unknown };
+  const { message, sessionId, onboarding } = (body ?? {}) as {
+    message?: unknown;
+    sessionId?: unknown;
+    onboarding?: unknown;
+  };
+  const isOnboarding = onboarding === true;
   const text = typeof message === "string" ? message.trim() : "";
   if (!text) {
     return Response.json({ error: "message is required" }, { status: 400 });
@@ -148,8 +158,9 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
   }
 
   try {
+    const activePrompt = isOnboarding ? ONBOARDING_SYSTEM_PROMPT : SYSTEM_PROMPT;
     const { envelope } = await answerWithEnvelope({
-      system: SYSTEM_PROMPT + memoryBlock + continuityContext,
+      system: activePrompt + memoryBlock + (isOnboarding ? "" : continuityContext),
       history,
       userMessage: text,
     });
@@ -162,6 +173,17 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
       return Response.json({ error: "could not save the reply" }, { status: 500 });
     }
     db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, active.id)).run();
+
+    if (envelope.onboarding_complete) {
+      db.insert(profile)
+        .values({ key: "onboarding_done", value: "true" })
+        .onConflictDoUpdate({
+          target: profile.key,
+          set: { value: "true" },
+        })
+        .run();
+    }
+
     // Fire-and-forget extraction: the answer is already saved and returned,
     // so a failed or slow distillation never blocks or fails the user-facing
     // turn (spec.md > Important Failure Modes). Local PoC: the floating
@@ -182,6 +204,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
       assistantMessage: toWireMessage(assistantRow),
       memoryUsed: envelope.memory_used,
       sources: envelope.sources,
+      onboardingComplete: envelope.onboarding_complete === true,
     });
   } catch (error) {
     // Undo the partial turn so the store stays clean; the client keeps the
