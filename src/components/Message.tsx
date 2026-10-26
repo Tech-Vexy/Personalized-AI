@@ -39,15 +39,23 @@ export default function Message({
   onRetry?: () => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [hasCachedAudio, setHasCachedAudio] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Stop audio if message unmounts
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioBlobUrlRef = useRef<string | null>(null);
+
+  // Clean up object URLs and audio only on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
+      }
+      if (audioBlobUrlRef.current) {
+        URL.revokeObjectURL(audioBlobUrlRef.current);
+        audioBlobUrlRef.current = null;
       }
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
@@ -58,29 +66,78 @@ export default function Message({
   const fallbackToSpeechSynthesis = (text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       setIsPlaying(false);
+      setIsPaused(false);
       return;
     }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(stripMarkdown(text));
-    utterance.onend = () => setIsPlaying(false);
-    utterance.onerror = () => setIsPlaying(false);
+    utterance.onend = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+    utterance.onerror = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
     window.speechSynthesis.speak(utterance);
     setIsPlaying(true);
+    setIsPaused(false);
   };
 
   const handleToggleSpeech = async () => {
+    // 1. If currently playing -> PAUSE (zero network call, zero re-generation cost)
     if (isPlaying) {
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current = null;
       }
       if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+        window.speechSynthesis.pause();
       }
       setIsPlaying(false);
+      setIsPaused(true);
       return;
     }
 
+    // 2. If paused -> RESUME immediately (zero network call, zero re-generation cost)
+    if (isPaused && audioRef.current) {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+        setIsPaused(false);
+        return;
+      } catch (err) {
+        console.warn("[tts] failed to resume cached audio element:", err);
+      }
+    }
+
+    // 3. If audio was already generated & cached in memory -> REPLAY (zero network call)
+    if (audioBlobUrlRef.current) {
+      try {
+        let audio = audioRef.current;
+        if (!audio) {
+          audio = new Audio(audioBlobUrlRef.current);
+          audioRef.current = audio;
+          audio.onended = () => {
+            setIsPlaying(false);
+            setIsPaused(false);
+          };
+          audio.onerror = () => {
+            setIsPlaying(false);
+            setIsPaused(false);
+            fallbackToSpeechSynthesis(message.content);
+          };
+        }
+        audio.currentTime = 0;
+        await audio.play();
+        setIsPlaying(true);
+        setIsPaused(false);
+        return;
+      } catch (err) {
+        console.warn("[tts] failed to replay cached audio blob:", err);
+      }
+    }
+
+    // 4. Initial play -> fetch once from /api/tts (server also checks its disk cache)
     if (!message.content.trim()) return;
 
     setIsLoadingAudio(true);
@@ -94,18 +151,24 @@ export default function Message({
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
+        audioBlobUrlRef.current = url;
+        setHasCachedAudio(true);
+
         const audio = new Audio(url);
         audioRef.current = audio;
         audio.onended = () => {
           setIsPlaying(false);
-          URL.revokeObjectURL(url);
+          setIsPaused(false);
         };
         audio.onerror = () => {
           setIsPlaying(false);
+          setIsPaused(false);
           fallbackToSpeechSynthesis(message.content);
         };
+
         await audio.play();
         setIsPlaying(true);
+        setIsPaused(false);
       } else {
         fallbackToSpeechSynthesis(message.content);
       }
@@ -146,11 +209,19 @@ export default function Message({
       <div className="msg-actions">
         <button
           type="button"
-          className={`msg-action-btn ${isPlaying ? "playing" : ""} ${isLoadingAudio ? "loading" : ""}`}
+          className={`msg-action-btn ${isPlaying ? "playing" : ""} ${isPaused ? "paused" : ""} ${isLoadingAudio ? "loading" : ""}`}
           onClick={handleToggleSpeech}
           disabled={isLoadingAudio}
-          title={isPlaying ? "Stop speech" : "Read aloud with Gemma (Cartesia Sonic)"}
-          aria-label={isPlaying ? "Stop speech" : "Read aloud with Gemma"}
+          title={
+            isPlaying
+              ? "Pause speech"
+              : isPaused
+              ? "Resume speech (cached)"
+              : hasCachedAudio
+              ? "Replay speech (cached)"
+              : "Read aloud with Gemma (Cartesia Sonic)"
+          }
+          aria-label={isPlaying ? "Pause speech" : isPaused ? "Resume speech" : "Read aloud with Gemma"}
         >
           {isLoadingAudio ? (
             <span className="tts-loading-indicator">
@@ -168,13 +239,28 @@ export default function Message({
                 <span className="wave-bar bar-4" />
                 <span className="wave-bar bar-5" />
               </div>
-              <span className="tts-playing-text">Speaking (Gemma)</span>
-              <span className="tts-stop-icon" title="Stop playback">
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="4" y="4" width="16" height="16" rx="2" />
+              <span className="tts-playing-text">Pause (Gemma)</span>
+              <span className="tts-stop-icon" title="Pause playback">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="4" width="4" height="16" rx="1" />
+                  <rect x="15" y="4" width="4" height="16" rx="1" />
                 </svg>
               </span>
             </div>
+          ) : isPaused ? (
+            <span className="tts-idle-indicator">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span>Resume (Gemma)</span>
+            </span>
+          ) : hasCachedAudio ? (
+            <span className="tts-idle-indicator">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span>Replay (Gemma)</span>
+            </span>
           ) : (
             <span className="tts-idle-indicator">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

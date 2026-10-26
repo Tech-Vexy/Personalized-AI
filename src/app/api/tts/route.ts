@@ -1,5 +1,22 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const CACHE_DIR = path.join(process.cwd(), "data", "audio-cache");
+
+function getCachePath(voiceId: string, modelId: string, text: string): string {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+  const hash = crypto
+    .createHash("sha256")
+    .update(`${voiceId}:${modelId}:${text}`)
+    .digest("hex");
+  return path.join(CACHE_DIR, `${hash}.wav`);
+}
 
 function stripMarkdownForSpeech(markdown: string): string {
   return markdown
@@ -13,8 +30,8 @@ function stripMarkdownForSpeech(markdown: string): string {
 }
 
 /**
- * Cartesia Text-to-Speech (TTS) route.
- * Converts assistant message text into expressive, ultra-low latency speech via Cartesia Sonic.
+ * Cartesia Text-to-Speech (TTS) route with persistent disk caching.
+ * Prevents redundant API costs by hashing voiceId + modelId + text.
  */
 export async function POST(req: Request) {
   const apiKey = process.env.CARTESIA_API_KEY;
@@ -41,7 +58,28 @@ export async function POST(req: Request) {
       body.voiceId ||
       process.env.CARTESIA_VOICE_ID ||
       "62ae83ad-4f6a-430b-af41-a9bede9286ca"; // Gemma - Decisive Agent
+    const modelId = process.env.CARTESIA_MODEL || "sonic-3.6";
 
+    // 1. Check local audio disk cache
+    const cacheFile = getCachePath(voiceId, modelId, cleanText);
+    if (fs.existsSync(cacheFile)) {
+      try {
+        const cachedBuf = fs.readFileSync(cacheFile);
+        return new Response(cachedBuf, {
+          status: 200,
+          headers: {
+            "Content-Type": "audio/wav",
+            "Content-Length": cachedBuf.byteLength.toString(),
+            "X-Audio-Cache": "HIT",
+            "Cache-Control": "public, max-age=31536000, immutable",
+          },
+        });
+      } catch (readErr) {
+        console.warn("[tts cache] Failed to read cached file:", readErr);
+      }
+    }
+
+    // 2. Cache miss -> Call Cartesia API
     const cartesiaUrl = "https://api.cartesia.ai/tts/bytes";
     const response = await fetch(cartesiaUrl, {
       method: "POST",
@@ -51,7 +89,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model_id: process.env.CARTESIA_MODEL || "sonic-3.6",
+        model_id: modelId,
         transcript: cleanText,
         voice: {
           mode: "id",
@@ -75,12 +113,21 @@ export async function POST(req: Request) {
     }
 
     const audioArrayBuffer = await response.arrayBuffer();
+
+    // 3. Persist to disk cache
+    try {
+      fs.writeFileSync(cacheFile, Buffer.from(audioArrayBuffer));
+    } catch (writeErr) {
+      console.warn("[tts cache] Failed to write cache file:", writeErr);
+    }
+
     return new Response(audioArrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/wav",
         "Content-Length": audioArrayBuffer.byteLength.toString(),
-        "Cache-Control": "public, max-age=3600",
+        "X-Audio-Cache": "MISS",
+        "Cache-Control": "public, max-age=31536000, immutable",
       },
     });
   } catch (err) {
