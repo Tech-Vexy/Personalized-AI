@@ -21,8 +21,11 @@ type SessionListItem = {
 
 // Web Speech API interface definitions
 interface SpeechRecognitionEventLike {
+  resultIndex?: number;
   results: {
+    length: number;
     [index: number]: {
+      isFinal?: boolean;
       [index: number]: {
         transcript: string;
       };
@@ -85,6 +88,9 @@ export default function ChatView() {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const baseInputRef = useRef("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Detect speech recognition support safely on mount
   useEffect(() => {
@@ -143,11 +149,24 @@ export default function ChatView() {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [input]);
 
+  const stopDictation = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+    setIsListening(false);
+  }, []);
+
   const handleNewChat = useCallback(() => {
     if (sending) return;
     if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
+      stopDictation();
     }
     setSessionId(null);
     setItems([]);
@@ -159,7 +178,7 @@ export default function ChatView() {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
     }
-  }, [isListening, sending]);
+  }, [isListening, sending, stopDictation]);
 
   const handleSelectSession = useCallback(
     async (id: number) => {
@@ -210,61 +229,111 @@ export default function ChatView() {
     [deletingSessionId, handleNewChat, sessionId],
   );
 
-  const toggleMic = useCallback(() => {
-    if (!speechSupported) {
-      setMicNotice(
-        "Microphone speech-to-text uses the Web Speech API (available in Google Chrome and Microsoft Edge).",
-      );
-      setTimeout(() => setMicNotice(null), 5000);
-      return;
-    }
-
+  const toggleMic = useCallback(async () => {
     if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
+      stopDictation();
       return;
     }
 
+    baseInputRef.current = input.trim();
+    setIsListening(true);
+    setMicNotice(null);
+
+    // 1. Audio recording stream for Deepgram Nova-2 STT (works across all browsers)
+    let mediaRecorderActive = false;
+    if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: mediaRecorder.mimeType || "audio/webm",
+          });
+          if (audioBlob.size > 1000) {
+            try {
+              const res = await fetch("/api/stt", {
+                method: "POST",
+                headers: { "Content-Type": audioBlob.type },
+                body: audioBlob,
+              });
+              if (res.ok) {
+                const data = (await res.json()) as { transcript?: string };
+                if (data.transcript) {
+                  const base = baseInputRef.current;
+                  setInput(base ? `${base} ${data.transcript}` : data.transcript);
+                }
+              }
+            } catch (err) {
+              console.log("[stt] Deepgram fallback to Web Speech:", err);
+            }
+          }
+        };
+
+        mediaRecorder.start();
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorderActive = true;
+      } catch (err) {
+        console.warn("[stt] MediaRecorder audio access unavailable:", err);
+      }
+    }
+
+    // 2. Web Speech API for immediate live interim hypothesis display (fixed duplication bug)
     const SpeechAPI =
       (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike })
         .SpeechRecognition ||
       (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
         .webkitSpeechRecognition;
 
-    if (!SpeechAPI) return;
+    if (SpeechAPI) {
+      try {
+        const recognition = new SpeechAPI();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
 
-    try {
-      const recognition = new SpeechAPI();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
+        recognition.onresult = (event: SpeechRecognitionEventLike) => {
+          let accumulated = "";
+          for (let i = 0; i < (event.results.length || 0); i++) {
+            const item = event.results[i];
+            if (item && item[0]?.transcript) {
+              accumulated += item[0].transcript;
+            }
+          }
+          const spoken = accumulated.trim();
+          if (spoken) {
+            const base = baseInputRef.current;
+            setInput(base ? `${base} ${spoken}` : spoken);
+          }
+        };
 
-      recognition.onresult = (event: SpeechRecognitionEventLike) => {
-        const transcript = event.results[0]?.[0]?.transcript ?? "";
-        if (transcript) {
-          setInput((prev) => {
-            const trimmed = prev.trim();
-            return trimmed ? `${trimmed} ${transcript}` : transcript;
-          });
-        }
-      };
+        recognition.onerror = () => {
+          if (!mediaRecorderActive) setIsListening(false);
+        };
 
-      recognition.onerror = () => {
-        setIsListening(false);
-      };
+        recognition.onend = () => {
+          if (!mediaRecorderActive) setIsListening(false);
+        };
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-      setIsListening(true);
-      setMicNotice(null);
-    } catch {
+        recognitionRef.current = recognition;
+        recognition.start();
+      } catch {
+        if (!mediaRecorderActive) setIsListening(false);
+      }
+    } else if (!mediaRecorderActive) {
       setIsListening(false);
+      setMicNotice(
+        "Microphone input requires microphone permission or Google Chrome / Edge.",
+      );
+      setTimeout(() => setMicNotice(null), 5000);
     }
-  }, [isListening, speechSupported]);
+  }, [input, isListening, stopDictation]);
 
   const send = useCallback(
     async (text: string, existing?: { id: number }) => {
@@ -272,8 +341,7 @@ export default function ChatView() {
       if (!trimmed || sending) return;
 
       if (isListening) {
-        recognitionRef.current?.stop();
-        setIsListening(false);
+        stopDictation();
       }
 
       const userLocalId = existing?.id ?? -Date.now();
@@ -460,7 +528,7 @@ export default function ChatView() {
         setSending(false);
       }
     },
-    [fetchSessions, isListening, sending, sessionId],
+    [fetchSessions, isListening, sending, sessionId, stopDictation],
   );
 
   const retry = useCallback(() => {

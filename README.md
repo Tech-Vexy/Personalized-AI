@@ -14,7 +14,8 @@ Built with Next.js, SQLite (via `better-sqlite3` and `drizzle-orm`), and NVIDIA 
 - **Session Continuity ("Let's continue"):** Reopen the app and type `"let's continue"` to get an unprompted recap of where the previous conversation left off and a proposed next step.
 - **Repetition Guard:** If you request something previously generated in an earlier conversation, the system points back to the prior session and deliverable rather than regenerating a new variant.
 - **Recent Sessions History Drawer:** Collapsible sidebar with active conversation switching, timestamp indicators, and conversation deletion.
-- **Speech Input & Legible Waiting State:** Native Web Speech API microphone dictation into editable text (in Chromium browsers), plus an elapsed-seconds thinking indicator (`thinking… 4s`).
+- **Speech Input & Legible Waiting State:** Dual-engine speech-to-text with Deepgram Nova-2 and Web Speech API into editable text across all browsers, plus an elapsed-seconds thinking indicator (`thinking… 4s`).
+- **Voice Read-Aloud (TTS):** Cartesia Sonic 3.6 text-to-speech with the British Gemma voice ("Gemma - Decisive Agent") allows listening to any assistant response with sub-100ms generative audio.
 - **Stateless Surface:** Every launch opens a clean, airy conversation with a `+ New Chat` button to start fresh anytime, while the AI retains what it learned.
 - **Local-First & Private:** Single local SQLite database (`data/memory.db`). No accounts, no cloud sync, and no third-party tracking.
 
@@ -77,6 +78,8 @@ devpost-project/
 │   │   ├── api/chat/         # Turn loop, real-time SSE streaming, continuity & repetition guards
 │   │   ├── api/profile/      # First-launch onboarding gating
 │   │   ├── api/sessions/     # Sessions listing, loading & deletion
+│   │   ├── api/stt/          # Deepgram Nova-2 speech-to-text
+│   │   ├── api/tts/          # Cartesia Sonic 3.6 text-to-speech (Gemma voice)
 │   │   ├── globals.css       # Gemini/Claude-inspired design tokens & sidebar styles
 │   │   └── page.tsx          # Gated UI root (Get Started → Onboarding → Chat)
 │   ├── components/
