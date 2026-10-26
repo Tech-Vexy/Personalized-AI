@@ -146,28 +146,45 @@ export default function Message({
       <div className="msg-actions">
         <button
           type="button"
-          className={`msg-action-btn ${isPlaying ? "playing" : ""}`}
+          className={`msg-action-btn ${isPlaying ? "playing" : ""} ${isLoadingAudio ? "loading" : ""}`}
           onClick={handleToggleSpeech}
           disabled={isLoadingAudio}
-          title={isPlaying ? "Stop speech" : "Read aloud (Cartesia Sonic TTS)"}
-          aria-label={isPlaying ? "Stop speech" : "Read aloud"}
+          title={isPlaying ? "Stop speech" : "Read aloud with Gemma (Cartesia Sonic)"}
+          aria-label={isPlaying ? "Stop speech" : "Read aloud with Gemma"}
         >
           {isLoadingAudio ? (
-            <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12" />
-            </svg>
+            <span className="tts-loading-indicator">
+              <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12" />
+              </svg>
+              <span>Generating voice…</span>
+            </span>
           ) : isPlaying ? (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
+            <div className="tts-playing-indicator">
+              <div className="audio-waveform-bars" aria-label="Audio waveform visualizer">
+                <span className="wave-bar bar-1" />
+                <span className="wave-bar bar-2" />
+                <span className="wave-bar bar-3" />
+                <span className="wave-bar bar-4" />
+                <span className="wave-bar bar-5" />
+              </div>
+              <span className="tts-playing-text">Speaking (Gemma)</span>
+              <span className="tts-stop-icon" title="Stop playback">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                </svg>
+              </span>
+            </div>
           ) : (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-            </svg>
+            <span className="tts-idle-indicator">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
+              <span>Listen (Gemma)</span>
+            </span>
           )}
-          <span>{isLoadingAudio ? "Preparing…" : isPlaying ? "Stop" : "Listen"}</span>
         </button>
       </div>
     </div>

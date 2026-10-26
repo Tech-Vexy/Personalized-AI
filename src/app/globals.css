@@ -36,7 +36,10 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(150, 99, 61, 0.06) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, rgba(196, 143, 102, 0.05) 0px, transparent 55%);
   color: var(--ink);
   font: 16px/1.65 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -50,9 +53,22 @@ body {
   padding: 13px 22px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
-.app-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
-.app-title span { font-weight: 400; color: var(--ink-soft); }
+.app-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, var(--ink) 25%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.app-title span {
+  font-weight: 400;
+  color: var(--ink-soft);
+  -webkit-text-fill-color: var(--ink-soft);
+}
 
 /* --- chat ---------------------------------------------------------------- */
 .chat { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
@@ -79,14 +95,16 @@ body {
 .msg-user { align-self: flex-end; max-width: 85%; }
 .msg-user-text {
   margin: 0; padding: 11px 16px;
-  background: var(--panel); border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--panel) 0%, rgba(242, 240, 234, 0.7) 100%);
+  border: 1px solid var(--border);
   border-radius: 18px 18px 5px 18px;
   white-space: pre-wrap; overflow-wrap: anywhere;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
 }
 
 .msg-assistant { align-self: stretch; display: flex; flex-direction: column; gap: 10px; }
 
-/* --- message action buttons (TTS speech) --------------------------------- */
+/* --- message action buttons (TTS speech & audio waveform) ----------------- */
 .msg-actions {
   display: flex;
   align-items: center;
@@ -97,16 +115,16 @@ body {
 .msg-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: none;
+  gap: 6px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 8px;
+  border-radius: 8px;
+  padding: 4px 10px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink-soft);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
@@ -114,12 +132,71 @@ body {
   color: var(--ink);
   background: var(--panel);
   border-color: var(--ink-soft);
+  transform: translateY(-1px);
 }
 
 .msg-action-btn.playing {
   color: var(--accent);
   border-color: var(--accent);
-  background: var(--panel);
+  background: linear-gradient(135deg, rgba(150, 99, 61, 0.12) 0%, rgba(230, 138, 77, 0.12) 100%);
+  box-shadow: 0 0 10px rgba(150, 99, 61, 0.18);
+}
+
+.msg-action-btn.loading {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.tts-loading-indicator,
+.tts-idle-indicator,
+.tts-playing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tts-playing-text {
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.tts-stop-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: rgba(150, 99, 61, 0.2);
+  margin-left: 2px;
+}
+
+/* Audio waveform equalizer bars */
+.audio-waveform-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 14px;
+}
+
+.wave-bar {
+  display: inline-block;
+  width: 2.5px;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: soundWave 0.9s ease-in-out infinite alternate;
+}
+
+.wave-bar.bar-1 { height: 6px; animation-duration: 0.75s; animation-delay: 0.1s; }
+.wave-bar.bar-2 { height: 12px; animation-duration: 0.55s; animation-delay: 0.25s; }
+.wave-bar.bar-3 { height: 14px; animation-duration: 0.85s; animation-delay: 0.05s; }
+.wave-bar.bar-4 { height: 9px; animation-duration: 0.65s; animation-delay: 0.35s; }
+.wave-bar.bar-5 { height: 5px; animation-duration: 0.7s; animation-delay: 0.2s; }
+
+@keyframes soundWave {
+  0% { transform: scaleY(0.3); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(0.4); opacity: 0.7; }
 }
 
 .spin {
@@ -134,11 +211,13 @@ body {
 /* --- thought-signature panel — receipts, not clutter ---------------------- */
 .thought-sig {
   border: 1px solid var(--border);
-  background: var(--panel);
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--surface) 100%);
   border-radius: 10px;
   font-size: 13.5px;
   color: var(--ink-soft);
   overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 .thought-sig > button {
   display: flex; align-items: center; gap: 8px;
@@ -201,12 +280,20 @@ body {
 .composer textarea::placeholder { color: var(--ink-soft); }
 .composer-send {
   border: none; border-radius: 12px; cursor: pointer;
-  background: var(--ink); color: var(--bg);
-  font: inherit; font-weight: 500;
+  background: linear-gradient(135deg, var(--ink) 0%, #3a3832 100%);
+  color: var(--bg);
+  font: inherit; font-weight: 550;
   padding: 10px 18px;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.composer-send:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent) 0%, #a96c3b 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(150, 99, 61, 0.25);
 }
 .composer-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.composer-send:disabled { opacity: 0.4; cursor: default; }
+.composer-send:disabled { opacity: 0.35; cursor: default; }
 .composer-hint {
   max-width: var(--column); margin: 8px auto 0;
   font-size: 12.5px; color: var(--ink-soft); text-align: center;
@@ -377,8 +464,17 @@ body {
 }
 
 
-/* --- mic & waiting state ------------------------------------------------- */
+/* --- mic & waveform animations ------------------------------------------ */
+.composer-mic-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
 .composer-mic {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -390,19 +486,21 @@ body {
   color: var(--ink-soft);
   cursor: pointer;
   flex: none;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
 }
 
 .composer-mic:hover {
   color: var(--ink);
   border-color: var(--ink-soft);
+  transform: scale(1.03);
 }
 
 .composer-mic.listening {
   color: #fff;
-  background: var(--danger);
-  border-color: var(--danger);
-  animation: pulse 1.5s infinite;
+  background: linear-gradient(135deg, #e54d2e 0%, #f76808 100%);
+  border-color: #f76808;
+  box-shadow: 0 0 16px rgba(229, 77, 46, 0.45);
 }
 
 .composer-mic:disabled {
@@ -410,25 +508,170 @@ body {
   cursor: default;
 }
 
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-  100% { transform: scale(1); }
+/* Dynamic expanding ripple soundwave rings */
+.mic-ripple {
+  position: absolute;
+  inset: -3px;
+  border-radius: 15px;
+  border: 2px solid rgba(229, 77, 46, 0.65);
+  pointer-events: none;
+  animation: micRipple 1.8s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  z-index: 1;
 }
 
-.typing-container {
+.mic-ripple.ring-2 {
+  animation-delay: 0.9s;
+}
+
+@keyframes micRipple {
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+
+/* Active listening banner with animated frequency bars */
+.listening-banner {
+  max-width: var(--column);
+  margin: 0 auto 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 2px;
+  gap: 10px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(229, 77, 46, 0.08) 0%, rgba(247, 104, 8, 0.08) 100%);
+  border: 1px solid rgba(229, 77, 46, 0.28);
+  border-radius: 10px;
+  animation: fadeIn 0.2s ease;
 }
 
-.typing-elapsed {
+.listening-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+}
+
+.l-bar {
+  display: inline-block;
+  width: 2.5px;
+  background: linear-gradient(180deg, #e54d2e 0%, #f76808 100%);
+  border-radius: 2px;
+  animation: listenBar 0.8s ease-in-out infinite alternate;
+}
+
+.l-bar.bar-1 { height: 8px; animation-duration: 0.65s; animation-delay: 0.1s; }
+.l-bar.bar-2 { height: 14px; animation-duration: 0.45s; animation-delay: 0.25s; }
+.l-bar.bar-3 { height: 16px; animation-duration: 0.8s; animation-delay: 0.05s; }
+.l-bar.bar-4 { height: 11px; animation-duration: 0.55s; animation-delay: 0.35s; }
+.l-bar.bar-5 { height: 15px; animation-duration: 0.7s; animation-delay: 0.15s; }
+.l-bar.bar-6 { height: 7px; animation-duration: 0.6s; animation-delay: 0.3s; }
+
+@keyframes listenBar {
+  0% { transform: scaleY(0.25); opacity: 0.4; }
+  50% { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(0.35); opacity: 0.6; }
+}
+
+.listening-banner-text {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #d14324;
+}
+
+@media (prefers-color-scheme: dark) {
+  .listening-banner-text { color: #f76808; }
+}
+
+/* --- loading animation (AI thinking card & gradient orb) ------------------ */
+.thinking-card {
+  align-self: flex-start;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--panel) 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  animation: fadeIn 0.25s ease;
+}
+
+.thinking-orb {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0.4;
+  animation: orbPulse 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.orb-core {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, #d49568 100%);
+  box-shadow: 0 0 10px rgba(150, 99, 61, 0.5);
+  animation: orbGlow 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes orbPulse {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes orbGlow {
+  0% { transform: scale(0.9); filter: brightness(0.95); }
+  100% { transform: scale(1.1); filter: brightness(1.2); }
+}
+
+.thinking-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.thinking-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.thinking-title {
   font-size: 13px;
+  font-weight: 550;
   color: var(--ink-soft);
+}
+
+.thinking-timer {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
+.thinking-shimmer {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmerTrack 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmerTrack {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
 
 /* --- new chat button in header ------------------------------------------- */
 .new-chat-btn {
@@ -436,20 +679,24 @@ body {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--surface) 100%);
   color: var(--ink);
   font: inherit;
   font-size: 13.5px;
   font-weight: 550;
-  padding: 6px 13px;
+  padding: 6px 14px;
   border-radius: 9px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .new-chat-btn:hover {
   background: var(--surface);
-  border-color: var(--ink-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(150, 99, 61, 0.12);
 }
 
 .new-chat-btn:disabled {
@@ -707,8 +954,9 @@ body {
 }
 
 .session-item.active {
-  background: var(--panel);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--surface) 100%);
   border-color: var(--border);
+  border-left: 3px solid var(--accent);
 }
 
 .session-item-content {

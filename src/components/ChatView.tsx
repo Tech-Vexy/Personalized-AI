@@ -729,17 +729,22 @@ export default function ChatView() {
               ))}
               {sending && !streamingHasContent && (
                 <div
-                  className="typing-container"
+                  className="thinking-card"
                   role="status"
                   aria-live="polite"
                   aria-label={`The assistant is thinking, elapsed ${elapsedSeconds} seconds`}
                 >
-                  <div className="typing">
-                    <span />
-                    <span />
-                    <span />
+                  <div className="thinking-orb">
+                    <span className="orb-ring" />
+                    <span className="orb-core" />
                   </div>
-                  <span className="typing-elapsed">thinking… {elapsedSeconds}s</span>
+                  <div className="thinking-content">
+                    <div className="thinking-title-row">
+                      <span className="thinking-title">Synthesizing response…</span>
+                      <span className="thinking-timer">{elapsedSeconds}s</span>
+                    </div>
+                    <div className="thinking-shimmer" />
+                  </div>
                 </div>
               )}
               <div ref={bottomRef} />
@@ -748,6 +753,20 @@ export default function ChatView() {
         </main>
 
         <footer className="composer">
+          {isListening && (
+            <div className="listening-banner" role="status" aria-live="polite">
+              <div className="listening-waveform" aria-hidden="true">
+                <span className="l-bar bar-1" />
+                <span className="l-bar bar-2" />
+                <span className="l-bar bar-3" />
+                <span className="l-bar bar-4" />
+                <span className="l-bar bar-5" />
+                <span className="l-bar bar-6" />
+              </div>
+              <span className="listening-banner-text">Listening with Deepgram Nova-2… speak now</span>
+            </div>
+          )}
+
           <form
             className="composer-inner"
             onSubmit={(e) => {
@@ -755,35 +774,37 @@ export default function ChatView() {
               void send(input);
             }}
           >
-            <button
-              type="button"
-              className={`composer-mic ${isListening ? "listening" : ""}`}
-              onClick={toggleMic}
-              disabled={sending}
-              title={
-                !speechSupported
-                  ? "Microphone speech-to-text requires Google Chrome or Microsoft Edge"
-                  : isListening
-                  ? "Listening… click to stop"
-                  : "Dictate via microphone"
-              }
-              aria-label={isListening ? "Stop dictation" : "Start dictation"}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="composer-mic-wrapper">
+              {isListening && <span className="mic-ripple" />}
+              {isListening && <span className="mic-ripple ring-2" />}
+              <button
+                type="button"
+                className={`composer-mic ${isListening ? "listening" : ""}`}
+                onClick={toggleMic}
+                disabled={sending}
+                title={
+                  isListening
+                    ? "Listening with Deepgram… click to stop"
+                    : "Dictate with microphone (Deepgram Nova-2)"
+                }
+                aria-label={isListening ? "Stop dictation" : "Start dictation"}
               >
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="22" />
-              </svg>
-            </button>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" x2="12" y1="19" y2="22" />
+                </svg>
+              </button>
+            </div>
 
             <textarea
               ref={taRef}
