@@ -4,9 +4,10 @@ import { callModel } from "./llm";
 /**
  * The kernel's memory module (spec.md > Components > Recall engine):
  * - keyword recall over the FTS5 index with a bm25 relevance floor,
- * - the extraction call that distills durable memories after each turn
- *   (an extraction failure never fails the user-facing turn),
- * - FTS writes kept rowid-aligned with memories.id (spec.md > Data Model).
+ * - enhanced prefix & inflection matching ("term"* in SQLite FTS5),
+ * - smart extraction gating (avoids wasting LLM calls on greetings & trivial chatter),
+ * - fuzzy deduplication to prevent repetitive fragmented memories,
+ * - bounded repetition scan over past deliverable requests.
  */
 
 const STOPWORDS = new Set([
@@ -20,13 +21,12 @@ const STOPWORDS = new Set([
   "would", "will", "shall", "may", "might", "must", "just", "also", "very",
   "really", "some", "any", "all", "get", "got", "make", "made", "like",
   "want", "need", "know", "think", "thought", "there", "here", "than",
+  "tell", "give", "show", "help", "please", "thanks", "thank", "okay",
 ]);
 
 /**
  * The relevance floor: bm25() in SQLite FTS5 returns smaller (more negative)
- * values for better matches. Tuned against scripts/seed.ts — the quality bar
- * is that a distinctive phrase surfaces its session's memory while generic
- * messages trigger nothing (spec.md > Decisions and Open Issues).
+ * values for better matches.
  */
 export const BM25_FLOOR = -0.6;
 
@@ -50,9 +50,8 @@ export function keywordsFrom(text: string): string[] {
 }
 
 /**
- * Recall: FTS5 MATCH from the user's words → bm25 ranking → relevance floor
- * → memories with session provenance. The current session is excluded —
- * its content is already in the short-term history window.
+ * Recall: FTS5 MATCH with prefix wildcards (e.g. "financ"* matches "finance" and "financial")
+ * → bm25 ranking → relevance floor → memories with session provenance.
  */
 export function recallMemories(
   userMessage: string,
@@ -60,7 +59,9 @@ export function recallMemories(
 ): RecalledMemory[] {
   const words = keywordsFrom(userMessage);
   if (words.length === 0) return [];
-  const match = words.map((w) => `"${w}"`).join(" OR ");
+
+  // Use prefix wildcard matching for root-word / inflection support
+  const match = words.map((w) => `"${w}"*`).join(" OR ");
   const rows = sqlite
     .prepare(
       `SELECT m.id          AS memoryId,
@@ -82,6 +83,7 @@ export function recallMemories(
     createdAt: number;
     rank: number;
   }>;
+
   return rows
     .filter((r) => r.rank <= BM25_FLOOR && r.sessionId !== excludeSessionId)
     .map((r) => ({
@@ -93,23 +95,43 @@ export function recallMemories(
     }));
 }
 
+/**
+ * Smart distillation gate: avoids wasting round-trips and API quota
+ * on small talk, trivial one-word replies, or continuity triggers.
+ */
+export function shouldExtractMemories(userMessage: string): boolean {
+  const trimmed = userMessage.trim().toLowerCase().replace(/[.,!?;:]/g, "");
+  if (trimmed.length < 15) {
+    const trivial = new Set([
+      "hi", "hello", "hey", "thanks", "thank you", "ok", "okay",
+      "cool", "yes", "no", "yep", "nope", "sure", "bye", "goodbye",
+      "let's continue", "lets continue", "continue",
+    ]);
+    if (trivial.has(trimmed)) return false;
+  }
+  const words = keywordsFrom(userMessage);
+  return words.length >= 2;
+}
+
 const EXTRACTION_SYSTEM = `You distill durable long-term memories from one exchange with the user. Reply with ONLY a JSON object — no markdown fences, no text before or after it:
 {"memories": ["..."]}
-- At most 3 short third-person statements (under 200 characters each) capturing facts, decisions, preferences, projects, goals, or commitments worth carrying into future conversations.
+- At most 2 short third-person statements (under 200 characters each) capturing key facts, decisions, preferences, projects, goals, or commitments worth carrying into future conversations.
 - Never include small talk, transient states, or speculation.
 - If nothing qualifies, return {"memories": []}.`;
 
 /**
  * The extraction call: distills the finished exchange into durable memories
- * and writes them (and the FTS index). Throws on model/parse failure —
- * the chat route catches and moves on; the user-facing turn never waits
- * on or fails because of this.
+ * and writes them with semantic overlap deduplication.
  */
 export async function extractMemories(params: {
   sessionId: number;
   userMessage: string;
   assistantReply: string;
 }): Promise<string[]> {
+  if (!shouldExtractMemories(params.userMessage)) {
+    return [];
+  }
+
   const { raw } = await callModel([
     { role: "system", content: EXTRACTION_SYSTEM },
     {
@@ -128,26 +150,43 @@ export async function extractMemories(params: {
   }
   if (!Array.isArray(obj.memories)) return [];
 
+  const existingRows = sqlite
+    .prepare("SELECT content FROM memories ORDER BY id DESC LIMIT 50")
+    .all() as Array<{ content: string }>;
+
   const written: string[] = [];
-  const find = sqlite.prepare("SELECT id FROM memories WHERE content = ?");
   const insertMemory = sqlite.prepare(
     "INSERT INTO memories (content, source_session_id, created_at) VALUES (?, ?, ?)",
   );
   const insertFts = sqlite.prepare(
     "INSERT INTO memories_fts (rowid, content) VALUES (?, ?)",
   );
+
   for (const m of obj.memories.slice(0, 3)) {
     if (typeof m !== "string") continue;
     const content = m.trim().slice(0, 200);
     if (!content) continue;
-    if (find.get(content)) continue; // exact duplicate — skip (PoC-sized dedup)
+
+    // Fuzzy deduplication: check if an existing memory shares high keyword overlap
+    const newWords = keywordsFrom(content);
+    const isRedundant = existingRows.some((ex) => {
+      if (ex.content === content) return true;
+      const exWords = new Set(keywordsFrom(ex.content));
+      if (exWords.size === 0 || newWords.length === 0) return false;
+      const overlap = newWords.filter((w) => exWords.has(w)).length;
+      return overlap / Math.max(exWords.size, newWords.length) >= 0.75;
+    });
+
+    if (isRedundant) continue;
+
     const info = insertMemory.run(content, params.sessionId, Date.now());
     insertFts.run(Number(info.lastInsertRowid), content);
     written.push(content);
+    existingRows.push({ content });
   }
+
   return written;
 }
-
 
 export type PriorDeliverable = {
   sessionId: number;

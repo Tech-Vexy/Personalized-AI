@@ -1,7 +1,14 @@
 import { asc, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { memories, messages, profile, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
-import { answerWithEnvelope, type ChatMessage } from "@/lib/llm";
+import {
+  answerWithEnvelope,
+  parseReceiptsTag,
+  streamModel,
+  STREAM_ENVELOPE_CONTRACT,
+  type ChatMessage,
+  type EnvelopeSource,
+} from "@/lib/llm";
 import { recallMemories, extractMemories, findPriorDeliverables } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +52,8 @@ export function isContinuityTrigger(text: string): boolean {
 
 /**
  * One chat turn: persist user message → recall long-term memories →
- * prompt (history + recalled memories + continuity if triggered) →
- * envelope → persist answer → fire-and-forget memory extraction → return JSON.
- * The surface is stateless; sessions are internal kernel structure.
+ * prompt (history + recalled memories + continuity/repetition if triggered) →
+ * returns either a real-time SSE stream (stream: true) or a structured envelope JSON.
  */
 export async function POST(req: Request) {
   let body: unknown;
@@ -56,12 +62,14 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { message, sessionId, onboarding } = (body ?? {}) as {
+  const { message, sessionId, onboarding, stream } = (body ?? {}) as {
     message?: unknown;
     sessionId?: unknown;
     onboarding?: unknown;
+    stream?: unknown;
   };
   const isOnboarding = onboarding === true;
+  const isStreaming = stream === true;
   const text = typeof message === "string" ? message.trim() : "";
   if (!text) {
     return Response.json({ error: "message is required" }, { status: 400 });
@@ -94,17 +102,15 @@ export async function POST(req: Request) {
     .map((m) => ({ role: m.role, content: m.content }));
 
   // Long-term memory: keyword recall over the FTS index, relevance-floored,
-  // with session provenance. The current session is excluded — its content
-  // is already in the history window above.
+  // with session provenance. The current session is excluded.
   const recalled = recallMemories(text, active.id);
   const memoryBlock = recalled.length
     ? `\n\nLong-term memories from earlier sessions with this user, most relevant first (format: [session #id, date] content):\n${recalled
         .map((r) => `- [session #${r.sessionId}, ${r.date}] ${r.content}`)
-        .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one you used in sources as {"session_id": <number>, "date": "<YYYY-MM-DD>", "taken": "<what you took>", "why_now": "<why it matters here>"}. If none of them bear on this message, ignore them and keep memory_used false.`
+        .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one in sources. If none bear on this message, keep memory_used false.`
     : "";
 
   // Repetition guard (spec.md > Components > Recall engine):
-  // Bounded scan for prior deliverables matching user request keywords.
   const priorDeliverables = findPriorDeliverables(text, active.id);
   const repetitionBlock = priorDeliverables.length
     ? `\n\nREPETITION GUARD: The user may be repeating a prior request that was already handled in an earlier conversation.
@@ -120,7 +126,6 @@ RULE: If the user is asking again for this same deliverable or outcome, POINT BA
     : "";
 
   // Continuity responder (spec.md > Components > Continuity responder):
-  // Triggers only on a fresh session's first message matching "let's continue".
   let continuityContext = "";
   if (createdSession && isContinuityTrigger(text)) {
     const lastSession = db
@@ -162,8 +167,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
     }
   }
 
-  // Persist the user message. A failed turn appends nothing else — the
-  // pending message lives in client state until an answer exists.
+  // Persist the user message.
   const userRow = db
     .insert(messages)
     .values({ sessionId: active.id, role: "user", content: text })
@@ -173,8 +177,122 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
     return Response.json({ error: "could not save the message" }, { status: 500 });
   }
 
+  const activePrompt = isOnboarding ? ONBOARDING_SYSTEM_PROMPT : SYSTEM_PROMPT;
+
+  // Handle Real-Time Token Streaming (SSE)
+  if (isStreaming) {
+    const encoder = new TextEncoder();
+    const systemInstruction = `${activePrompt}${memoryBlock}${repetitionBlock}${isOnboarding ? "" : continuityContext}\n\n${STREAM_ENVELOPE_CONTRACT}`;
+
+    const readable = new ReadableStream({
+      async start(controller) {
+        let fullReply = "";
+        let buffer = "";
+        let headerParsed = false;
+        let memoryUsed = false;
+        let sources: EnvelopeSource[] = [];
+
+        try {
+          const streamGen = streamModel([
+            { role: "system", content: systemInstruction },
+            ...history,
+            { role: "user", content: text },
+          ]);
+
+          for await (const chunk of streamGen) {
+            if (!headerParsed) {
+              buffer += chunk;
+              if (buffer.includes("/>") || buffer.includes("\n") || buffer.length > 200) {
+                const parsed = parseReceiptsTag(buffer);
+                memoryUsed = parsed.memoryUsed;
+                sources = parsed.sources;
+                headerParsed = true;
+
+                controller.enqueue(
+                  encoder.encode(`event: metadata\ndata: ${JSON.stringify({ memoryUsed, sources })}\n\n`),
+                );
+
+                if (parsed.content) {
+                  fullReply += parsed.content;
+                  controller.enqueue(
+                    encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: parsed.content })}\n\n`),
+                  );
+                }
+              }
+            } else {
+              fullReply += chunk;
+              controller.enqueue(
+                encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: chunk })}\n\n`),
+              );
+            }
+          }
+
+          if (!headerParsed) {
+            const parsed = parseReceiptsTag(buffer);
+            memoryUsed = parsed.memoryUsed;
+            sources = parsed.sources;
+            fullReply = parsed.content;
+            controller.enqueue(
+              encoder.encode(`event: metadata\ndata: ${JSON.stringify({ memoryUsed, sources })}\n\n`),
+            );
+            if (fullReply) {
+              controller.enqueue(
+                encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: fullReply })}\n\n`),
+              );
+            }
+          }
+
+          const cleanReply = fullReply.trim();
+          const assistantRow = db
+            .insert(messages)
+            .values({ sessionId: active.id, role: "assistant", content: cleanReply })
+            .returning()
+            .get();
+
+          if (assistantRow) {
+            db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, active.id)).run();
+
+            void extractMemories({
+              sessionId: active.id,
+              userMessage: text,
+              assistantReply: cleanReply,
+            }).catch((err) => {
+              console.error("[memory] extraction skipped:", err);
+            });
+
+            controller.enqueue(
+              encoder.encode(
+                `event: done\ndata: ${JSON.stringify({
+                  sessionId: active.id,
+                  userMessage: toWireMessage(userRow),
+                  assistantMessage: toWireMessage(assistantRow),
+                  memoryUsed,
+                  sources,
+                })}\n\n`,
+              ),
+            );
+          }
+        } catch (err) {
+          controller.enqueue(
+            encoder.encode(`event: error\ndata: ${JSON.stringify({ error: err instanceof Error ? err.message : "Stream error" })}\n\n`),
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+      },
+    });
+  }
+
+  // Non-streaming fallback
   try {
-    const activePrompt = isOnboarding ? ONBOARDING_SYSTEM_PROMPT : SYSTEM_PROMPT;
     const { envelope } = await answerWithEnvelope({
       system: activePrompt + memoryBlock + repetitionBlock + (isOnboarding ? "" : continuityContext),
       history,
@@ -200,10 +318,6 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
         .run();
     }
 
-    // Fire-and-forget extraction: the answer is already saved and returned,
-    // so a failed or slow distillation never blocks or fails the user-facing
-    // turn (spec.md > Important Failure Modes). Local PoC: the floating
-    // promise completes in the long-running dev server process.
     void extractMemories({
       sessionId: active.id,
       userMessage: text,
@@ -214,6 +328,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
         err instanceof Error ? err.message : err,
       );
     });
+
     return Response.json({
       sessionId: active.id,
       userMessage: toWireMessage(userRow),
@@ -223,8 +338,6 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
       onboardingComplete: envelope.onboarding_complete === true,
     });
   } catch (error) {
-    // Undo the partial turn so the store stays clean; the client keeps the
-    // pending message and can retry it (spec.md > Important Failure Modes).
     db.delete(messages).where(eq(messages.id, userRow.id)).run();
     if (createdSession) {
       db.delete(sessions).where(eq(sessions.id, active.id)).run();

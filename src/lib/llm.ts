@@ -8,11 +8,11 @@ import OpenAI from "openai";
 
 export const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
 /**
- * GLM-5.3-flash is a reasoning model: measured NIM latency is ~70-170s per
- * call at reasoning_effort "low". 180s timeout ensures completions finish.
+ * Measured NIM latency with nvidia/nemotron-3.5-bolt-e4b is ~2-4s.
+ * 180s ceiling provides ample headroom for complex reasoning turns.
  */
 export const REQUEST_TIMEOUT_MS = 180_000;
-/** Room for the model's reasoning pass AND the JSON envelope answer. */
+/** Room for model completion and envelope answer. */
 export const MAX_COMPLETION_TOKENS = 2048;
 
 /** NVIDIA NIM API key (supports NVIDIA_API_KEY or NIM_API_KEY). */
@@ -58,6 +58,12 @@ export const ENVELOPE_CONTRACT = `Reply with ONLY a JSON object — no markdown 
 - "memory_used": true only if this reply draws on memories from earlier sessions that were injected into this conversation; otherwise false.
 - "sources": when memory_used is true, one object per memory you actually used: {"session_id": <number>, "date": "<YYYY-MM-DD>", "taken": "<what you took from it>", "why_now": "<why it matters to this message>"}. When memory_used is false, sources must be [].`;
 
+export const STREAM_ENVELOPE_CONTRACT = `If you draw on any injected memories from earlier sessions, start your reply with:
+<receipts memory_used="true" sources='[{"session_id": 1, "date": "2026-10-02", "taken": "<excerpt>", "why_now": "<relevance>"}]'/>
+If you did not use any memories, start with:
+<receipts memory_used="false" sources='[]'/>
+Immediately after the <receipts .../> tag, output your full response in clean Markdown. Do NOT wrap your markdown response in JSON.`;
+
 const REPAIR_INSTRUCTION = `Your previous reply was not a single valid JSON object. Answer again with ONLY the JSON object in the required shape — no markdown fences, no extra text.`;
 
 export class EnvelopeParseError extends Error {
@@ -100,7 +106,7 @@ function grabRateLimit(headers: Headers): Record<string, string> {
   return out;
 }
 
-/** One raw chat-completion call. No other file may call the model directly. */
+/** One raw chat-completion call. */
 export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
   const started = Date.now();
   const model = modelId();
@@ -131,12 +137,62 @@ export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
   };
 }
 
+/** Real-time token streaming using the OpenAI SDK. */
+export async function* streamModel(messages: ChatMessage[]): AsyncGenerator<string, void, unknown> {
+  const model = modelId();
+  const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+    model,
+    messages,
+    temperature: 0.7,
+    max_tokens: MAX_COMPLETION_TOKENS,
+    stream: true,
+  };
+  if (model.includes("glm") || model.includes("flash")) {
+    (params as unknown as Record<string, unknown>).reasoning_effort = "low";
+  }
+
+  const stream = await getClient().chat.completions.create(params);
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content ?? "";
+    if (delta) yield delta;
+  }
+}
+
 /** Pull the JSON object out of a reply that may carry fences or stray prose. */
 function extractJsonObject(raw: string): unknown {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error("no JSON object found");
   return JSON.parse(raw.slice(start, end + 1));
+}
+
+export function parseReceiptsTag(text: string): {
+  memoryUsed: boolean;
+  sources: EnvelopeSource[];
+  content: string;
+} {
+  const match = text.match(/<receipts\s+memory_used=["'](true|false)["']\s+sources=(?:'([^']*)'|"([^"]*)")\s*\/?>/i);
+  if (!match) {
+    return { memoryUsed: false, sources: [], content: text };
+  }
+
+  const memoryUsed = match[1] === "true";
+  const sourcesRaw = match[2] ?? match[3] ?? "[]";
+  let sources: EnvelopeSource[] = [];
+  try {
+    const parsed = JSON.parse(sourcesRaw);
+    if (Array.isArray(parsed)) {
+      sources = parsed.map((s) => ({
+        session_id: Number(s.session_id) || 0,
+        date: String(s.date || ""),
+        taken: String(s.taken || ""),
+        why_now: String(s.why_now || ""),
+      }));
+    }
+  } catch {}
+
+  const content = text.slice(match[0].length).trimStart();
+  return { memoryUsed, sources, content };
 }
 
 function parseEnvelope(raw: string): Envelope {
