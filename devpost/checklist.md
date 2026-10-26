@@ -112,13 +112,13 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
 
 - [ ] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
 - [ ] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
-- [ ] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
+- [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
 
-Activity and evidence: [what actually happened; real document/test/code references; unfinished work if interrupted]
-Route and stops: [actual paths and symbols; guided stops completed, or reference-only route]
-Edit outcome: [tried/kept/reverted/declined/not applicable; verification if changed]
-Reflection: [offered/answered/declined/already covered — personal answer belongs only in the ignored profile]
-Activity mode: [live app and editor, explicit static fallback, focused alternative, prior practice, or recap]
+Activity and evidence: App map generated with architecture diagram, three-stop reference route (turn loop, memory kernel, stateless surface), configuration pointers, and envelope fallback reuse practice.
+Route and stops: src/app/api/chat/route.ts (turn loop & continuity), src/lib/memory.ts (FTS5 recall & repetition guard), src/components/ChatView.tsx (voice input & legible waiting state).
+Edit outcome: not applicable (reference route prepared in devpost/app-map.html)
+Reflection: offered
+Activity mode: live app and editor
 
 ## Revisions
 
