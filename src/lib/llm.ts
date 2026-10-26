@@ -12,8 +12,8 @@ export const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
  * 180s ceiling provides ample headroom for complex reasoning turns.
  */
 export const REQUEST_TIMEOUT_MS = 180_000;
-/** Room for model completion and envelope answer. */
-export const MAX_COMPLETION_TOKENS = 2048;
+/** Room for comprehensive model completion and envelope answer. */
+export const MAX_COMPLETION_TOKENS = 4096;
 
 /** NVIDIA NIM API key (supports NVIDIA_API_KEY or NIM_API_KEY). */
 export function apiKey(): string {
