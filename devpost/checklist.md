@@ -69,7 +69,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Run onboarding yourself on a fresh database — does it feel like conversation rather than a questionnaire, and does the AI correctly use a fact you gave it afterward?
   Commit: `Add Get Started gate and conversational onboarding`
 
-- [ ] **7. Mic input and legible waiting**
+- [x] **7. Mic input and legible waiting**
   Becomes usable: The mic button dictates into the input (editable before sending, Chromium browsers); while the model thinks, the UI shows a clear waiting state with elapsed seconds, so silence never reads as dead. (Replaces the cut history-drawer slice; mic pulled forward at the learner's flag.)
   Why now: The learner flagged the missing mic first, and GLM-era silent waits eroded trust ("the AI never responds" — it was thinking). Both are surface-level and independent of the kernel, so they slot cleanly after it.
   PRD ref: `prd.md > Voice Input`, `prd.md > Look and Feel`

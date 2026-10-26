@@ -12,23 +12,76 @@ type ChatResponse = {
   sources?: EnvelopeSourceView[];
 };
 
+// Web Speech API interface definitions
+interface SpeechRecognitionEventLike {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionLike extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onend: (() => void) | null;
+}
+
 export default function ChatView() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [items, setItems] = useState<WireMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+
   /** The message held in client state until an answer exists (spec.md > Error & retry). */
   const [pending, setPending] = useState<{ text: string; localId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
-  // Keep the newest message in view.
+  // Detect speech recognition support safely on mount
+  useEffect(() => {
+    const SpeechAPI =
+      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
+        .webkitSpeechRecognition;
+
+    if (SpeechAPI) {
+      setSpeechSupported(true);
+    }
+  }, []);
+
+  // Legible waiting state: elapsed seconds counter while model thinks
+  useEffect(() => {
+    if (!sending) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sending]);
+
+  // Keep newest message in view
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [items.length, sending]);
 
-  // The input grows with its content, up to a cap.
+  // Dynamic textarea sizing
   useEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
@@ -36,10 +89,65 @@ export default function ChatView() {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [input]);
 
+  const toggleMic = useCallback(() => {
+    if (!speechSupported) return;
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechAPI =
+      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
+        .webkitSpeechRecognition;
+
+    if (!SpeechAPI) return;
+
+    try {
+      const recognition = new SpeechAPI();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        const transcript = event.results[0]?.[0]?.transcript ?? "";
+        if (transcript) {
+          setInput((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${transcript}` : transcript;
+          });
+        }
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+      setIsListening(true);
+    } catch {
+      setIsListening(false);
+    }
+  }, [isListening, speechSupported]);
+
   const send = useCallback(
     async (text: string, existing?: { id: number }) => {
       const trimmed = text.trim();
       if (!trimmed || sending) return;
+
+      if (isListening) {
+        recognitionRef.current?.stop();
+        setIsListening(false);
+      }
+
       const localId = existing?.id ?? -Date.now();
       if (existing) {
         setItems((prev) => prev.map((m) => (m.id === localId ? { ...m, failed: false } : m)));
@@ -84,7 +192,7 @@ export default function ChatView() {
         setSending(false);
       }
     },
-    [sending, sessionId],
+    [isListening, sending, sessionId],
   );
 
   const retry = useCallback(() => {
@@ -119,10 +227,18 @@ export default function ChatView() {
               />
             ))}
             {sending && (
-              <div className="typing" role="status" aria-label="The assistant is thinking">
-                <span />
-                <span />
-                <span />
+              <div
+                className="typing-container"
+                role="status"
+                aria-live="polite"
+                aria-label={`The assistant is thinking, elapsed ${elapsedSeconds} seconds`}
+              >
+                <div className="typing">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <span className="typing-elapsed">thinking… {elapsedSeconds}s</span>
               </div>
             )}
             <div ref={bottomRef} />
@@ -138,12 +254,30 @@ export default function ChatView() {
             void send(input);
           }}
         >
+          {speechSupported && (
+            <button
+              type="button"
+              className={`composer-mic ${isListening ? "listening" : ""}`}
+              onClick={toggleMic}
+              disabled={sending}
+              title={isListening ? "Listening… click to stop" : "Dictate via microphone"}
+              aria-label={isListening ? "Stop dictation" : "Start dictation"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+            </button>
+          )}
+
           <textarea
             ref={taRef}
             rows={1}
             value={input}
-            placeholder="Write a message…"
+            placeholder={isListening ? "Listening… speak now" : "Write a message…"}
             aria-label="Message"
+            disabled={sending}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -152,6 +286,7 @@ export default function ChatView() {
               }
             }}
           />
+
           <button
             className="composer-send"
             type="submit"
