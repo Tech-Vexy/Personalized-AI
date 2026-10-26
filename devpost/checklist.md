@@ -39,7 +39,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: create a Gemini API key in AI Studio and put it in `.env.local` as `GOOGLE_API_KEY=…`; send one message and feel the reply latency.
   Commit: `Swap NIM GLM for Gemini 3.8 Flash and make the surface stateless`
 
-- [ ] **4. The kernel: it recalls old ground and shows its receipts**
+- [x] **4. The kernel: it recalls old ground and shows its receipts**
   Becomes usable: Tell it something in one session; in a later session, mention the topic and it answers with that memory — usually silently, sometimes with a collapsible thought-signature panel above the answer naming the source session, what it took, and why now.
   Why now: This is The Unique Kernel — memory with judgment — placed as early as the loop allows. The keyword quality bar is verified here, while the recorded remedy (embeddings via NIM, schema unchanged) is still cheap.
   PRD ref: `prd.md > Memory Recall — unified store, keyword retrieval`, `prd.md > Visible vs. Invisible Memory — the AI's judgment`
@@ -49,7 +49,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: In a fresh session, mention something from an earlier one — first watch it answer silently, then watch the thought-signature panel appear. Does the "pulling from your Oct 2 session…" moment feel like proof, or clutter?
   Commit: `Add long-term memory recall and thought-signature panels`
 
-- [ ] **5. "Let's continue" picks up the thread**
+- [x] **5. "Let's continue" picks up the thread**
   Becomes usable: Type "let's continue" as the first message after reopening the app and the AI summarizes where the last session left off and proposes the next step, unprompted. On day one with no sessions: a clarifying question, never a fabricated recap.
   Why now: The core loop's opening move and the demo's first "oh, that's cool" beat; it depends on sessions and memories existing, so it lands right after the kernel.
   PRD ref: `prd.md > Session Continuity — "let's continue"`

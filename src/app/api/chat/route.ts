@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { messages, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
+import { memories, messages, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
 import { answerWithEnvelope, type ChatMessage } from "@/lib/llm";
 import { recallMemories, extractMemories } from "@/lib/memory";
 
@@ -29,9 +29,19 @@ function toWireMessage(row: MessageRow) {
 }
 
 /**
+ * Continuity trigger check: case-insensitive literal match on
+ * "let's continue" / "lets continue" / "let us continue"
+ * (spec.md > Components > Continuity responder).
+ */
+export function isContinuityTrigger(text: string): boolean {
+  const norm = text.toLowerCase().trim().replace(/[.,!?;:]+$/, "");
+  return norm === "let's continue" || norm === "lets continue" || norm === "let us continue";
+}
+
+/**
  * One chat turn: persist user message → recall long-term memories →
- * prompt (history + recalled memories) → envelope → persist answer →
- * fire-and-forget memory extraction → return JSON.
+ * prompt (history + recalled memories + continuity if triggered) →
+ * envelope → persist answer → fire-and-forget memory extraction → return JSON.
  * The surface is stateless; sessions are internal kernel structure.
  */
 export async function POST(req: Request) {
@@ -83,6 +93,49 @@ export async function POST(req: Request) {
         .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one you used in sources as {"session_id": <number>, "date": "<YYYY-MM-DD>", "taken": "<what you took>", "why_now": "<why it matters here>"}. If none of them bear on this message, ignore them and keep memory_used false.`
     : "";
 
+  // Continuity responder (spec.md > Components > Continuity responder):
+  // Triggers only on a fresh session's first message matching "let's continue".
+  let continuityContext = "";
+  if (createdSession && isContinuityTrigger(text)) {
+    const lastSession = db
+      .select()
+      .from(sessions)
+      .where(ne(sessions.id, active.id))
+      .orderBy(desc(sessions.updatedAt))
+      .limit(1)
+      .get();
+
+    if (lastSession) {
+      const lastMessages = db
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, lastSession.id))
+        .orderBy(asc(messages.id))
+        .all();
+      const lastMems = db
+        .select()
+        .from(memories)
+        .where(eq(memories.sourceSessionId, lastSession.id))
+        .all();
+
+      if (lastMessages.length > 0) {
+        const sessionDate = new Date(lastSession.updatedAt).toISOString().slice(0, 10);
+        continuityContext = `\n\nSESSION CONTINUITY PICKUP: The user opened a fresh session and said "${text}".
+You are resuming from their previous conversation (session #${lastSession.id}, "${lastSession.title}", dated ${sessionDate}).
+Tail of that conversation:
+${lastMessages.slice(-6).map((m) => `[${m.role}]: ${m.content}`).join("\n")}
+${lastMems.length ? `\nDistilled key facts from that session:\n${lastMems.map((m) => `- ${m.content}`).join("\n")}` : ""}
+
+YOUR INSTRUCTION: Summarize where the last session left off (e.g. "Yesterday we looked at..., today...") and propose a concrete, thoughtful next step unprompted. If you draw on that session, set memory_used to true and cite it in sources.`;
+      }
+    }
+
+    if (!continuityContext) {
+      continuityContext = `\n\nSESSION CONTINUITY PICKUP: The user said "${text}", but there are no prior conversations or sessions in memory (empty store).
+RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake context. State calmly that this is our first conversation together, and ask a direct, friendly clarifying question asking what they would like to focus on or continue with. Keep memory_used false.`;
+    }
+  }
+
   // Persist the user message. A failed turn appends nothing else — the
   // pending message lives in client state until an answer exists.
   const userRow = db
@@ -96,7 +149,7 @@ export async function POST(req: Request) {
 
   try {
     const { envelope } = await answerWithEnvelope({
-      system: SYSTEM_PROMPT + memoryBlock,
+      system: SYSTEM_PROMPT + memoryBlock + continuityContext,
       history,
       userMessage: text,
     });
