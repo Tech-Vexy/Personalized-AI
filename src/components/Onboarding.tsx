@@ -98,6 +98,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         <p className="app-title">
           Personal AI <span>· onboarding</span>
         </p>
+        <button
+          type="button"
+          className="skip-btn"
+          onClick={() => {
+            void fetch("/api/profile", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ key: "onboarding_done", value: "true" }),
+            });
+            onComplete();
+          }}
+          title="Skip onboarding and enter chat"
+        >
+          Skip to chat →
+        </button>
       </header>
 
       <main className="chat">

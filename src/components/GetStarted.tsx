@@ -2,9 +2,10 @@
 
 type GetStartedProps = {
   onStart: () => void;
+  onSkip?: () => void;
 };
 
-export default function GetStarted({ onStart }: GetStartedProps) {
+export default function GetStarted({ onStart, onSkip }: GetStartedProps) {
   return (
     <div className="app">
       <header className="app-header">
@@ -48,9 +49,16 @@ export default function GetStarted({ onStart }: GetStartedProps) {
             </div>
           </div>
 
-          <button className="get-started-btn" type="button" onClick={onStart}>
-            Get Started
-          </button>
+          <div className="get-started-actions">
+            <button className="get-started-btn" type="button" onClick={onStart}>
+              Get Started
+            </button>
+            {onSkip && (
+              <button className="get-started-skip" type="button" onClick={onSkip}>
+                Go directly to chat →
+              </button>
+            )}
+          </div>
         </div>
       </main>
     </div>

@@ -106,7 +106,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
 
 ## Final Review
 
-- [ ] Final review complete — feedback resolved and learner confirms ready to ship
+- [x] Final review complete — learner feedback resolved (microphone always visible with Web Speech guidance, New Chat button in header, Get Started shown once with skip option) and learner confirms ready to ship
 
 ## Code Tour and App Map
 
