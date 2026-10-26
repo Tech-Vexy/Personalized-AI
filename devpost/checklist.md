@@ -79,7 +79,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: dictate a message and watch the waiting state — does the wait feel legible rather than dead?
   Commit: `Add mic input and legible waiting state`
 
-- [ ] **8. Asked twice? Point back, don't regenerate**
+- [x] **8. Asked twice? Point back, don't regenerate**
   Becomes usable: Request something you already got — the CV from last week — and the AI retrieves instead of regenerating: it points back to the earlier conversation and what was made there. Unrelated new requests proceed normally.
   Why now: The PRD's repetition-waste insight, kept as its own small slice so the kernel slice stays focused; it completes `memory.ts`'s repertoire exactly as the spec splits it (recall + repetition detection in one module).
   PRD ref: `prd.md > Repetition Guard — retrieval over regeneration`

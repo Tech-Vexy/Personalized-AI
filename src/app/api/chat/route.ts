@@ -2,7 +2,7 @@ import { asc, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { memories, messages, profile, sessions, type MessageRow, type SessionRow } from "@/lib/schema";
 import { answerWithEnvelope, type ChatMessage } from "@/lib/llm";
-import { recallMemories, extractMemories } from "@/lib/memory";
+import { recallMemories, extractMemories, findPriorDeliverables } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -103,6 +103,22 @@ export async function POST(req: Request) {
         .join("\n")}\n\nDraw on these only when they genuinely bear on the current message. If you use any of them in your reply, set memory_used to true and list each one you used in sources as {"session_id": <number>, "date": "<YYYY-MM-DD>", "taken": "<what you took>", "why_now": "<why it matters here>"}. If none of them bear on this message, ignore them and keep memory_used false.`
     : "";
 
+  // Repetition guard (spec.md > Components > Recall engine):
+  // Bounded scan for prior deliverables matching user request keywords.
+  const priorDeliverables = findPriorDeliverables(text, active.id);
+  const repetitionBlock = priorDeliverables.length
+    ? `\n\nREPETITION GUARD: The user may be repeating a prior request that was already handled in an earlier conversation.
+Prior matches found in earlier sessions:
+${priorDeliverables
+  .map(
+    (p) =>
+      `- [session #${p.sessionId}, ${p.date}] "${p.sessionTitle}": User asked: "${p.userRequest}". Produced: "${p.assistantSummary}..."`,
+  )
+  .join("\n")}
+
+RULE: If the user is asking again for this same deliverable or outcome, POINT BACK to the original session and its date/content instead of regenerating a fresh variant from scratch (e.g. "You asked for this on ${priorDeliverables[0].date} in our session on '${priorDeliverables[0].sessionTitle}' — here is what was made: ..."). Set memory_used to true and cite the session in sources. If this is a new or distinct request, proceed normally.`
+    : "";
+
   // Continuity responder (spec.md > Components > Continuity responder):
   // Triggers only on a fresh session's first message matching "let's continue".
   let continuityContext = "";
@@ -160,7 +176,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
   try {
     const activePrompt = isOnboarding ? ONBOARDING_SYSTEM_PROMPT : SYSTEM_PROMPT;
     const { envelope } = await answerWithEnvelope({
-      system: activePrompt + memoryBlock + (isOnboarding ? "" : continuityContext),
+      system: activePrompt + memoryBlock + repetitionBlock + (isOnboarding ? "" : continuityContext),
       history,
       userMessage: text,
     });

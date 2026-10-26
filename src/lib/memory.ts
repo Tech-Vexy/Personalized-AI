@@ -147,3 +147,79 @@ export async function extractMemories(params: {
   }
   return written;
 }
+
+
+export type PriorDeliverable = {
+  sessionId: number;
+  sessionTitle: string;
+  date: string;
+  userRequest: string;
+  assistantSummary: string;
+};
+
+/**
+ * Repetition guard: bounded LIKE scan over past messages from earlier sessions
+ * to detect repeated requests for already-produced deliverables (spec.md > Components > Recall engine).
+ */
+export function findPriorDeliverables(
+  userMessage: string,
+  excludeSessionId?: number,
+): PriorDeliverable[] {
+  const words = keywordsFrom(userMessage);
+  if (words.length === 0) return [];
+
+  const candidates: PriorDeliverable[] = [];
+
+  for (const word of words.slice(0, 4)) {
+    const rows = sqlite
+      .prepare(
+        `SELECT m.id AS msgId,
+                m.session_id AS sessionId,
+                m.role AS role,
+                m.content AS content,
+                m.created_at AS createdAt,
+                s.title AS sessionTitle
+         FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+         WHERE m.session_id != ?
+           AND m.role = 'user'
+           AND lower(m.content) LIKE ?
+         ORDER BY m.id DESC
+         LIMIT 3`,
+      )
+      .all(excludeSessionId ?? 0, `%${word.toLowerCase()}%`) as Array<{
+      msgId: number;
+      sessionId: number;
+      role: string;
+      content: string;
+      createdAt: number;
+      sessionTitle: string;
+    }>;
+
+    for (const row of rows) {
+      const assistantMsg = sqlite
+        .prepare(
+          `SELECT content FROM messages
+           WHERE session_id = ? AND role = 'assistant' AND id > ?
+           ORDER BY id ASC LIMIT 1`,
+        )
+        .get(row.sessionId, row.msgId) as { content: string } | undefined;
+
+      if (assistantMsg && assistantMsg.content) {
+        const summary = assistantMsg.content.slice(0, 280);
+        const date = new Date(row.createdAt).toISOString().slice(0, 10);
+        if (!candidates.some((c) => c.sessionId === row.sessionId)) {
+          candidates.push({
+            sessionId: row.sessionId,
+            sessionTitle: row.sessionTitle,
+            date,
+            userRequest: row.content,
+            assistantSummary: summary,
+          });
+        }
+      }
+    }
+  }
+
+  return candidates.slice(0, 2);
+}
