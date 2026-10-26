@@ -89,7 +89,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
   Learner check: Ask for the same deliverable twice across sessions and watch it point back. Decide whether retrieval-over-regeneration feels like memory or like being brushed off.
   Commit: `Add repetition guard with retrieval instead of regeneration`
 
-- [ ] **9. Failure modes and the demo-ready surface**
+- [x] **9. Failure modes and the demo-ready surface**
   Becomes usable: Model/network failures show an error with a retry button that resends the identical pending message; the whole journey looks like the calm, airy spec surface — ready to record. (Mic moved to slice 7.)
   Why now: The last bundle of small PRD behaviors plus the visual pass, so the demo records the intended experience rather than a styled-at-the-end retrofit.
   PRD ref: `prd.md > Failure & Recovery`, `prd.md > Look and Feel`
