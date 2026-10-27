@@ -108,6 +108,63 @@ export function isMetaMemoryQuery(text: string): boolean {
 }
 
 /**
+ * Detects if the user's message is an explicit instruction to forget or delete
+ * a topic or memory (e.g. "Forget about the Kyoto trip", "Please delete my tamale recipe").
+ */
+export function detectForgetDirective(text: string): string | null {
+  const norm = text.trim();
+  const patterns = [
+    /^(?:please\s+)?forget\s+(?:about\s+)?(?:all\s+(?:about\s+)?)?(.+)/i,
+    /^(?:please\s+)?(?:delete|remove)\s+(.+?)\s+(?:from\s+(?:your\s+|my\s+)?memory|from\s+vault)/i,
+    /^(?:please\s+)?don'?t\s+remember\s+(?:about\s+)?(.+)/i,
+    /^(?:please\s+)?erase\s+(.+?)\s+from\s+memory/i,
+  ];
+  for (const p of patterns) {
+    const match = norm.match(p);
+    if (match && match[1]) {
+      const topic = match[1].trim().replace(/[.,!?;:]+$/, "");
+      if (topic.length >= 2) return topic;
+    }
+  }
+  return null;
+}
+
+/**
+ * Eradicates all memories matching the specified topic from both relational table and FTS index.
+ */
+export function forgetMemoriesMatching(topic: string): {
+  forgottenCount: number;
+  contents: string[];
+} {
+  const words = keywordsFrom(topic);
+  if (words.length === 0) return { forgottenCount: 0, contents: [] };
+
+  const match = words.map((w) => `"${w}"*`).join(" OR ");
+  const rows = sqlite
+    .prepare(
+      `SELECT m.id, m.content
+       FROM memories_fts
+       JOIN memories m ON m.id = memories_fts.rowid
+       WHERE memories_fts MATCH ?`,
+    )
+    .all(match) as Array<{ id: number; content: string }>;
+
+  if (rows.length === 0) return { forgottenCount: 0, contents: [] };
+
+  const deleteFts = sqlite.prepare("DELETE FROM memories_fts WHERE rowid = ?");
+  const deleteMem = sqlite.prepare("DELETE FROM memories WHERE id = ?");
+
+  const contents: string[] = [];
+  for (const r of rows) {
+    deleteFts.run(r.id);
+    deleteMem.run(r.id);
+    contents.push(r.content);
+  }
+
+  return { forgottenCount: rows.length, contents };
+}
+
+/**
  * Recall: FTS5 MATCH with prefix wildcards (e.g. "financ"* matches "finance" and "financial")
  * → bm25 ranking → relevance floor → memories with session provenance.
  * For meta-memory questions, returns all durable profile and project memories.
@@ -190,7 +247,7 @@ export function recallMemories(
  * on small talk, trivial one-word replies, continuity triggers, or meta-memory queries.
  */
 export function shouldExtractMemories(userMessage: string): boolean {
-  if (isMetaMemoryQuery(userMessage)) {
+  if (isMetaMemoryQuery(userMessage) || detectForgetDirective(userMessage)) {
     return false;
   }
 
@@ -265,8 +322,8 @@ export async function extractMemories(params: {
   if (!Array.isArray(obj.memories)) return [];
 
   const existingRows = sqlite
-    .prepare("SELECT content FROM memories ORDER BY id DESC LIMIT 50")
-    .all() as Array<{ content: string }>;
+    .prepare("SELECT id, content FROM memories ORDER BY id DESC LIMIT 50")
+    .all() as Array<{ id: number; content: string }>;
 
   const written: string[] = [];
   const insertMemory = sqlite.prepare(
@@ -281,22 +338,43 @@ export async function extractMemories(params: {
     const content = m.trim().slice(0, 200);
     if (!content) continue;
 
-    // Fuzzy deduplication: check if an existing memory shares high keyword overlap
+    // Fuzzy deduplication & state superseding
     const newWords = keywordsFrom(content);
-    const isRedundant = existingRows.some((ex) => {
-      if (ex.content === content) return true;
+    let isRedundant = false;
+    let supersededId: number | null = null;
+
+    for (const ex of existingRows) {
+      if (ex.content === content) {
+        isRedundant = true;
+        break;
+      }
       const exWords = new Set(keywordsFrom(ex.content));
-      if (exWords.size === 0 || newWords.length === 0) return false;
+      if (exWords.size === 0 || newWords.length === 0) continue;
       const overlap = newWords.filter((w) => exWords.has(w)).length;
-      return overlap / Math.max(exWords.size, newWords.length) >= 0.75;
-    });
+      const similarity = overlap / Math.max(exWords.size, newWords.length);
+
+      if (similarity >= 0.82) {
+        isRedundant = true;
+        break;
+      } else if (similarity >= 0.55) {
+        // High topic overlap with updated state — supersede old stale memory
+        supersededId = ex.id;
+        break;
+      }
+    }
 
     if (isRedundant) continue;
+
+    // Eradicate outdated stale record from store and search index
+    if (supersededId) {
+      sqlite.prepare("DELETE FROM memories_fts WHERE rowid = ?").run(supersededId);
+      sqlite.prepare("DELETE FROM memories WHERE id = ?").run(supersededId);
+    }
 
     const info = insertMemory.run(content, params.sessionId, Date.now());
     insertFts.run(Number(info.lastInsertRowid), content);
     written.push(content);
-    existingRows.push({ content });
+    existingRows.push({ id: Number(info.lastInsertRowid), content });
   }
 
   return written;

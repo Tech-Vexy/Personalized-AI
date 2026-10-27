@@ -15,6 +15,8 @@ import {
   findPriorDeliverables,
   isMetaMemoryQuery,
   getCoreMemories,
+  detectForgetDirective,
+  forgetMemoriesMatching,
 } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
@@ -151,6 +153,22 @@ export async function POST(req: Request) {
     memoryBlock = `\n\nLONG-TERM MEMORY STORE: Currently empty (no prior memories saved yet). State honestly that you don't have past memories recorded yet for this user, but confirm you are ready to learn and remember.`;
   }
 
+  // Intentional forgetting directive (Conversational memory eradication)
+  const forgetTopic = detectForgetDirective(text);
+  let forgetBlock = "";
+  if (forgetTopic) {
+    const forgotten = forgetMemoriesMatching(forgetTopic);
+    if (forgotten.forgottenCount > 0) {
+      forgetBlock = `\n\nFORGET DIRECTIVE EXECUTED: The user asked you to forget or erase memories regarding "${forgetTopic}".
+The following ${forgotten.forgottenCount} memory entry/entries were permanently purged from the database and FTS index:
+${forgotten.contents.map((c) => `- ${c}`).join("\n")}
+RULE: Confirm warmly and with quiet respect that these memories have been permanently erased and forgotten from your Memory Vault. Do not dwell or argue. Set memory_used to true and cite the session in sources.`;
+    } else {
+      forgetBlock = `\n\nFORGET DIRECTIVE: The user asked to forget memories regarding "${forgetTopic}", but no matching memories were found in your vault.
+RULE: Inform the user calmly that you have no records stored about "${forgetTopic}" to forget.`;
+    }
+  }
+
   // Repetition guard (spec.md > Components > Recall engine):
   const priorDeliverables = findPriorDeliverables(text, active.id);
   const repetitionBlock = priorDeliverables.length
@@ -223,7 +241,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
   // Handle Real-Time Token Streaming (SSE)
   if (isStreaming) {
     const encoder = new TextEncoder();
-    const systemInstruction = `${activePrompt}${memoryBlock}${repetitionBlock}${isOnboarding ? "" : continuityContext}\n\n${STREAM_ENVELOPE_CONTRACT}`;
+    const systemInstruction = `${activePrompt}${memoryBlock}${forgetBlock}${repetitionBlock}${isOnboarding ? "" : continuityContext}\n\n${STREAM_ENVELOPE_CONTRACT}`;
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -335,7 +353,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
   // Non-streaming fallback
   try {
     const { envelope } = await answerWithEnvelope({
-      system: activePrompt + memoryBlock + repetitionBlock + (isOnboarding ? "" : continuityContext),
+      system: activePrompt + memoryBlock + forgetBlock + repetitionBlock + (isOnboarding ? "" : continuityContext),
       history,
       userMessage: text,
     });
