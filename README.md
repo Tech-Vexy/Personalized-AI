@@ -33,8 +33,8 @@ Built with Next.js, SQLite (via `better-sqlite3` and `drizzle-orm`), and NVIDIA 
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url>
-   cd devpost-project
+   git clone https://github.com/Tech-Vexy/Personalized-AI.git
+   cd Personalized-AI
    ```
 
 2. **Install dependencies:**
