@@ -102,7 +102,7 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
 ## Hands-on Checkpoints
 
 - [x] Early usable behavior explored — after slice 2 (first real chat + restart): feedback on look/feel and reply quality, while it can still shape slices 4–9. (Completed 2026-10-23: look/feel approved; mic absence, silent-latency perception, and no-way-to-start-fresh flagged — see Revisions.)
-- [ ] Final kick-the-tires exploration and feedback completed — after slice 9: the full core journey, including the three demo beats (clean-slate session that isn't clean, recall that names its source, retrieval instead of regeneration)
+- [x] Final kick-the-tires exploration and feedback completed — after slice 9: the full core journey, including the three demo beats (clean-slate session that isn't clean, recall that names its source, retrieval instead of regeneration)
 
 ## Final Review
 
@@ -110,14 +110,14 @@ Build mode: fast — chosen at first session (learner's agent experience; learne
 
 ## Code Tour and App Map
 
-- [ ] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
-- [ ] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
+- [x] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
+- [x] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
 - [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
 
 Activity and evidence: App map generated with architecture diagram, three-stop reference route (turn loop, memory kernel, stateless surface), configuration pointers, and envelope fallback reuse practice.
 Route and stops: src/app/api/chat/route.ts (turn loop & continuity), src/lib/memory.ts (FTS5 recall & repetition guard), src/components/ChatView.tsx (voice input & legible waiting state).
 Edit outcome: not applicable (reference route prepared in devpost/app-map.html)
-Reflection: offered
+Reflection: answered
 Activity mode: live app and editor
 
 ## Revisions
