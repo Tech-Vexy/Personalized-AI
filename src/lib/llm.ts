@@ -31,9 +31,18 @@ export function modelId(): string {
   return process.env.NIM_MODEL ?? "nvidia/nemotron-3.5-bolt-e4b";
 }
 
+/** Vision-language model for multimodal turns (e.g. image analysis, charts, diagrams). */
+export function visionModelId(): string {
+  return process.env.NIM_VISION_MODEL ?? "nvidia/nemotron-3.5-super-vl-120b-a12b";
+}
+
+export type ChatMessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatMessageContentPart[];
 };
 
 export type EnvelopeSource = {
@@ -107,14 +116,21 @@ function grabRateLimit(headers: Headers): Record<string, string> {
 }
 
 /** One raw chat-completion call. */
-export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
+export async function callModel(
+  messages: ChatMessage[],
+  options?: { isVision?: boolean },
+): Promise<RawCall> {
   const started = Date.now();
-  const model = modelId();
+  const model = options?.isVision ? visionModelId() : modelId();
+  const maxTokens = options?.isVision
+    ? Math.max(MAX_COMPLETION_TOKENS, 2048)
+    : MAX_COMPLETION_TOKENS;
+
   const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
     model,
-    messages,
+    messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     temperature: 0.7,
-    max_tokens: MAX_COMPLETION_TOKENS,
+    max_tokens: maxTokens,
   };
   if (model.includes("glm") || model.includes("flash")) {
     (params as unknown as Record<string, unknown>).reasoning_effort = "low";
@@ -123,8 +139,10 @@ export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
   const { data, response } = await getClient().chat.completions
     .create(params)
     .withResponse();
+  const msg = data.choices[0]?.message;
+  const content = msg?.content || (msg as unknown as Record<string, string>)?.reasoning_content || "";
   return {
-    raw: data.choices[0]?.message?.content ?? "",
+    raw: content,
     usage: data.usage
       ? {
           prompt_tokens: data.usage.prompt_tokens,
@@ -138,13 +156,20 @@ export async function callModel(messages: ChatMessage[]): Promise<RawCall> {
 }
 
 /** Real-time token streaming using the OpenAI SDK. */
-export async function* streamModel(messages: ChatMessage[]): AsyncGenerator<string, void, unknown> {
-  const model = modelId();
+export async function* streamModel(
+  messages: ChatMessage[],
+  options?: { isVision?: boolean },
+): AsyncGenerator<string, void, unknown> {
+  const model = options?.isVision ? visionModelId() : modelId();
+  const maxTokens = options?.isVision
+    ? Math.max(MAX_COMPLETION_TOKENS, 2048)
+    : MAX_COMPLETION_TOKENS;
+
   const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
     model,
-    messages,
+    messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     temperature: 0.7,
-    max_tokens: MAX_COMPLETION_TOKENS,
+    max_tokens: maxTokens,
     stream: true,
   };
   if (model.includes("glm") || model.includes("flash")) {
@@ -153,8 +178,9 @@ export async function* streamModel(messages: ChatMessage[]): AsyncGenerator<stri
 
   const stream = await getClient().chat.completions.create(params);
   for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content ?? "";
-    if (delta) yield delta;
+    const delta = chunk.choices[0]?.delta as (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & { reasoning_content?: string }) | undefined;
+    const contentDelta = delta?.content ?? "";
+    if (contentDelta) yield contentDelta;
   }
 }
 
@@ -235,22 +261,26 @@ function parseEnvelope(raw: string): Envelope {
 export async function answerWithEnvelope(params: {
   system: string;
   history: ChatMessage[];
-  userMessage: string;
+  userMessage: string | ChatMessageContentPart[];
+  isVision?: boolean;
 }): Promise<{ envelope: Envelope; meta: RawCall }> {
   const base: ChatMessage[] = [
     { role: "system", content: `${params.system}\n\n${ENVELOPE_CONTRACT}` },
     ...params.history,
     { role: "user", content: params.userMessage },
   ];
-  const first = await callModel(base);
+  const first = await callModel(base, { isVision: params.isVision });
   try {
     return { envelope: parseEnvelope(first.raw), meta: first };
   } catch {
-    const repair = await callModel([
-      ...base,
-      { role: "assistant", content: first.raw },
-      { role: "user", content: REPAIR_INSTRUCTION },
-    ]);
+    const repair = await callModel(
+      [
+        ...base,
+        { role: "assistant", content: first.raw },
+        { role: "user", content: REPAIR_INSTRUCTION },
+      ],
+      { isVision: params.isVision },
+    );
     try {
       return { envelope: parseEnvelope(repair.raw), meta: repair };
     } catch {

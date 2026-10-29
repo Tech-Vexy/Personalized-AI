@@ -24,6 +24,7 @@ export const messages = sqliteTable("messages", {
     .references(() => sessions.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  imageUrl: text("image_url"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

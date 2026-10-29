@@ -9,6 +9,7 @@ export type WireMessage = {
   id: number;
   role: "user" | "assistant";
   content: string;
+  imageUrl?: string;
   createdAt: string;
   failed?: boolean;
   /** Present on assistant replies when the AI drew on long-term memory. */
@@ -44,6 +45,7 @@ export default function Message({
   const [isPaused, setIsPaused] = useState(false);
   const [hasCachedAudio, setHasCachedAudio] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioBlobUrlRef = useRef<string | null>(null);
@@ -184,6 +186,17 @@ export default function Message({
   if (message.role === "user") {
     return (
       <div className="msg msg-user">
+        {message.imageUrl && (
+          <div className="msg-user-image-wrap">
+            <img
+              src={message.imageUrl}
+              alt="Attached visual context"
+              className="msg-user-image"
+              onClick={() => setShowLightbox(true)}
+              title="Click to view full image"
+            />
+          </div>
+        )}
         <p className="msg-user-text">{message.content}</p>
         {failed && (
           <div className="msg-failed">
@@ -193,6 +206,26 @@ export default function Message({
                 Retry
               </button>
             )}
+          </div>
+        )}
+        {showLightbox && message.imageUrl && (
+          <div
+            className="image-lightbox-overlay"
+            onClick={() => setShowLightbox(false)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="image-lightbox-content" onClick={(e) => e.stopPropagation()}>
+              <img src={message.imageUrl} alt="Enlarged view" className="image-lightbox-img" />
+              <button
+                type="button"
+                className="image-lightbox-close"
+                onClick={() => setShowLightbox(false)}
+                aria-label="Close enlarged view"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
       </div>

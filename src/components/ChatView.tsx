@@ -100,8 +100,24 @@ export default function ChatView() {
   const [deletingMemoryId, setDeletingMemoryId] = useState<number | null>(null);
   const [memoryNotice, setMemoryNotice] = useState<string | null>(null);
 
+  // Cloud Sync & Database state
+  const [syncStatus, setSyncStatus] = useState<{
+    configured: boolean;
+    dbUrl: string | null;
+    lastSyncAt: string | null;
+  } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Multimodal image attachment state
+  const [attachedImage, setAttachedImage] = useState<{
+    dataUri: string;
+    name: string;
+  } | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   /** The message held in client state until an answer exists (spec.md > Error & retry). */
-  const [pending, setPending] = useState<{ text: string; localId: number } | null>(null);
+  const [pending, setPending] = useState<{ text: string; localId: number; imageUrl?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -217,6 +233,8 @@ export default function ChatView() {
     setSessionId(null);
     setItems([]);
     setInput("");
+    setAttachedImage(null);
+    setIsDraggingOver(false);
     setPending(null);
     setError(null);
     setMicNotice(null);
@@ -321,6 +339,101 @@ export default function ChatView() {
       }
     },
     [deletingMemoryId],
+  );
+
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sync");
+      if (res.ok) {
+        const data = (await res.json()) as {
+          configured: boolean;
+          dbUrl: string | null;
+          lastSyncAt: string | null;
+        };
+        setSyncStatus(data);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch sync status", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (vaultOpen) {
+      void fetchSyncStatus();
+    }
+  }, [vaultOpen, fetchSyncStatus]);
+
+  const handleTriggerSync = useCallback(async () => {
+    setIsSyncing(true);
+    setMemoryNotice(null);
+    try {
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync" }),
+      });
+      const data = (await res.json()) as {
+        success: boolean;
+        pushed?: { memories: number };
+        pulled?: { memories: number };
+        currentStatus?: { configured: boolean; dbUrl: string | null; lastSyncAt: string | null };
+        error?: string;
+      };
+      if (data.success) {
+        setMemoryNotice(
+          `Sync complete: Pushed ${data.pushed?.memories ?? 0} memories, Pulled ${data.pulled?.memories ?? 0} memories.`,
+        );
+        if (data.currentStatus) setSyncStatus(data.currentStatus);
+        void fetchMemories();
+        void fetchSessions();
+      } else {
+        setMemoryNotice(data.error ?? "Sync failed");
+      }
+    } catch (e) {
+      setMemoryNotice(e instanceof Error ? e.message : "Failed to sync with Turso");
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setMemoryNotice(null), 5000);
+    }
+  }, [fetchMemories, fetchSessions]);
+
+  const handleImportBackup = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const snapshot = JSON.parse(text);
+        const res = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "import", snapshot }),
+        });
+        const data = (await res.json()) as {
+          success: boolean;
+          imported?: { memories: number; sessions: number };
+          error?: string;
+        };
+        if (data.success) {
+          setMemoryNotice(
+            `Backup restored! Imported ${data.imported?.memories ?? 0} memories and ${data.imported?.sessions ?? 0} sessions.`,
+          );
+          void fetchMemories();
+          void fetchSessions();
+          void fetchSyncStatus();
+        } else {
+          setMemoryNotice(data.error ?? "Failed to restore backup");
+        }
+      } catch (err) {
+        setMemoryNotice(
+          `Invalid backup file: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        e.target.value = "";
+        setTimeout(() => setMemoryNotice(null), 5000);
+      }
+    },
+    [fetchMemories, fetchSessions, fetchSyncStatus],
   );
 
   const toggleMic = useCallback(async () => {
@@ -429,10 +542,80 @@ export default function ChatView() {
     }
   }, [input, isListening, stopDictation]);
 
+  const handleImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setMicNotice("Please attach an image file (PNG, JPG, WebP, GIF).");
+      setTimeout(() => setMicNotice(null), 4000);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMicNotice("Image is too large (max 10MB).");
+      setTimeout(() => setMicNotice(null), 4000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setAttachedImage({
+          dataUri: reader.result,
+          name: file.name || "Attached image",
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const clipboardItems = e.clipboardData?.items;
+    if (!clipboardItems) return;
+    for (let i = 0; i < clipboardItems.length; i++) {
+      if (clipboardItems[i].type.startsWith("image/")) {
+        const file = clipboardItems[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleImageFile(file);
+          return;
+        }
+      }
+    }
+  }, [handleImageFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleImageFile(file);
+    }
+  }, [handleImageFile]);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageFile(file);
+    }
+    e.target.value = "";
+  }, [handleImageFile]);
+
   const send = useCallback(
-    async (text: string, existing?: { id: number }) => {
-      const trimmed = text.trim();
-      if (!trimmed || sending) return;
+    async (text: string, existing?: { id: number; imageUrl?: string }) => {
+      const currentImage = existing?.imageUrl ?? attachedImage?.dataUri;
+      const trimmed = text.trim() || (currentImage ? "Analyze this image in detail." : "");
+      if ((!trimmed && !currentImage) || sending) return;
 
       if (isListening) {
         stopDictation();
@@ -446,12 +629,19 @@ export default function ChatView() {
       } else {
         setItems((prev) => [
           ...prev,
-          { id: userLocalId, role: "user", content: trimmed, createdAt: new Date().toISOString() },
+          {
+            id: userLocalId,
+            role: "user",
+            content: trimmed,
+            imageUrl: currentImage,
+            createdAt: new Date().toISOString(),
+          },
         ]);
         setInput("");
+        setAttachedImage(null);
       }
 
-      setPending({ text: trimmed, localId: userLocalId });
+      setPending({ text: trimmed, localId: userLocalId, imageUrl: currentImage });
       setError(null);
       setSending(true);
       setStreamingHasContent(false);
@@ -460,7 +650,7 @@ export default function ChatView() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, sessionId, stream: true }),
+          body: JSON.stringify({ message: trimmed, sessionId, stream: true, imageUrl: currentImage }),
         });
 
         if (!res.ok) {
@@ -628,11 +818,11 @@ export default function ChatView() {
         setSending(false);
       }
     },
-    [fetchMemories, fetchSessions, isListening, sending, sessionId, stopDictation],
+    [attachedImage, fetchMemories, fetchSessions, isListening, sending, sessionId, stopDictation],
   );
 
   const retry = useCallback(() => {
-    if (pending) void send(pending.text, { id: pending.localId });
+    if (pending) void send(pending.text, { id: pending.localId, imageUrl: pending.imageUrl });
   }, [pending, send]);
 
   const filteredMemories = memoriesList.filter((m) => {
@@ -899,7 +1089,56 @@ export default function ChatView() {
           )}
         </main>
 
-        <footer className="composer">
+        <footer
+          className={`composer ${isDraggingOver ? "composer-drag-over" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDraggingOver && (
+            <div className="composer-drop-overlay">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>Drop image to analyze with Nemotron 3.5 Super VL</span>
+            </div>
+          )}
+
+          {attachedImage && (
+            <div className="composer-attached-preview">
+              <div className="composer-attached-thumb-wrap">
+                <img
+                  src={attachedImage.dataUri}
+                  alt={attachedImage.name}
+                  className="composer-attached-thumb"
+                />
+              </div>
+              <div className="composer-attached-info">
+                <span className="composer-attached-name" title={attachedImage.name}>
+                  {attachedImage.name}
+                </span>
+                <span className="composer-attached-badge">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Nemotron 3.5 Super VL
+                </span>
+              </div>
+              <button
+                type="button"
+                className="composer-attached-remove"
+                onClick={() => setAttachedImage(null)}
+                aria-label="Remove image"
+                title="Remove attached image"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {isListening && (
             <div className="listening-banner" role="status" aria-live="polite">
               <div className="listening-waveform" aria-hidden="true">
@@ -921,20 +1160,21 @@ export default function ChatView() {
               void send(input);
             }}
           >
-            <div className="composer-mic-wrapper">
-              {isListening && <span className="mic-ripple" />}
-              {isListening && <span className="mic-ripple ring-2" />}
+            <div className="composer-actions">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                style={{ display: "none" }}
+                onChange={handleFileInputChange}
+              />
               <button
                 type="button"
-                className={`composer-mic ${isListening ? "listening" : ""}`}
-                onClick={toggleMic}
+                className={`composer-attach-btn ${attachedImage ? "has-image" : ""}`}
+                onClick={() => fileInputRef.current?.click()}
                 disabled={sending}
-                title={
-                  isListening
-                    ? "Listening with Deepgram… click to stop"
-                    : "Dictate with microphone (Deepgram Nova-2)"
-                }
-                aria-label={isListening ? "Stop dictation" : "Start dictation"}
+                title="Attach image (PNG, JPG, WebP) or paste with Ctrl+V"
+                aria-label="Attach image"
               >
                 <svg
                   width="18"
@@ -946,20 +1186,59 @@ export default function ChatView() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" x2="12" y1="19" y2="22" />
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                  <circle cx="9" cy="9" r="2" />
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                 </svg>
               </button>
+
+              <div className="composer-mic-wrapper">
+                {isListening && <span className="mic-ripple" />}
+                {isListening && <span className="mic-ripple ring-2" />}
+                <button
+                  type="button"
+                  className={`composer-mic ${isListening ? "listening" : ""}`}
+                  onClick={toggleMic}
+                  disabled={sending}
+                  title={
+                    isListening
+                      ? "Listening with Deepgram… click to stop"
+                      : "Dictate with microphone (Deepgram Nova-2)"
+                  }
+                  aria-label={isListening ? "Stop dictation" : "Start dictation"}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" x2="12" y1="19" y2="22" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <textarea
               ref={taRef}
               rows={1}
               value={input}
-              placeholder={isListening ? "Listening… speak now" : "Write a message…"}
+              placeholder={
+                isListening
+                  ? "Listening… speak now"
+                  : attachedImage
+                  ? "Ask about this image (or press Enter to analyze)…"
+                  : "Write a message or paste an image (Ctrl+V)…"
+              }
               aria-label="Message"
               disabled={sending}
+              onPaste={handlePaste}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -972,13 +1251,13 @@ export default function ChatView() {
             <button
               className="composer-send"
               type="submit"
-              disabled={sending || input.trim() === ""}
+              disabled={sending || (input.trim() === "" && !attachedImage)}
             >
               Send
             </button>
           </form>
           {micNotice && <p className="composer-notice">{micNotice}</p>}
-          <p className="composer-hint">Enter to send · Shift+Enter for a new line</p>
+          <p className="composer-hint">Enter to send · Shift+Enter for newline · Paste (Ctrl+V) or drop images</p>
         </footer>
       </div>
 
@@ -1013,6 +1292,55 @@ export default function ChatView() {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
+            </div>
+
+            {/* Cloud Sync & Database Manager */}
+            <div className="vault-sync-bar">
+              <div className="vault-sync-status">
+                <span className={`sync-status-dot ${syncStatus?.configured ? "active" : ""}`} />
+                <div className="sync-status-details">
+                  <span className="sync-status-title">
+                    {syncStatus?.configured ? "Turso Cloud Sync Active" : "Local SQLite Kernel"}
+                  </span>
+                  <span className="sync-status-sub">
+                    {syncStatus?.configured
+                      ? syncStatus.lastSyncAt
+                        ? `Last synced ${formatSessionDate(syncStatus.lastSyncAt)}`
+                        : "Ready to sync with Turso"
+                      : "Local-first on disk · Set TURSO_DATABASE_URL to sync across devices"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="vault-sync-actions">
+                {syncStatus?.configured && (
+                  <button
+                    type="button"
+                    className="vault-action-btn sync-btn"
+                    onClick={handleTriggerSync}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? "Syncing…" : "↻ Sync Cloud"}
+                  </button>
+                )}
+                <a
+                  href="/api/sync?export=true"
+                  download
+                  className="vault-action-btn export-btn"
+                  title="Download full SQLite snapshot as JSON"
+                >
+                  ⭳ Export
+                </a>
+                <label className="vault-action-btn import-btn" title="Restore database from JSON snapshot">
+                  ⭱ Restore
+                  <input
+                    type="file"
+                    accept=".json"
+                    style={{ display: "none" }}
+                    onChange={handleImportBackup}
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Quick add form */}
@@ -1062,9 +1390,14 @@ export default function ChatView() {
                   </button>
                 )}
               </div>
-              <span className="vault-count-badge">
-                {filteredMemories.length} {filteredMemories.length === 1 ? "memory" : "memories"}
-              </span>
+              <div className="vault-stats-wrap">
+                <span className="vault-hybrid-badge" title="Hybrid Reciprocal Rank Fusion: FTS5 BM25 + 128-D Semantic Vectors">
+                  ⚡ Hybrid Recall
+                </span>
+                <span className="vault-count-badge">
+                  {filteredMemories.length} {filteredMemories.length === 1 ? "memory" : "memories"}
+                </span>
+              </div>
             </div>
 
             {/* Memory List */}

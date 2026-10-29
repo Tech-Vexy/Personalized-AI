@@ -65,6 +65,7 @@ function toWireMessage(row: MessageRow) {
     id: row.id,
     role: row.role,
     content: row.content,
+    imageUrl: row.imageUrl ?? undefined,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -91,17 +92,26 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { message, sessionId, onboarding, stream } = (body ?? {}) as {
+  const { message, sessionId, onboarding, stream, imageUrl } = (body ?? {}) as {
     message?: unknown;
     sessionId?: unknown;
     onboarding?: unknown;
     stream?: unknown;
+    imageUrl?: unknown;
   };
   const isOnboarding = onboarding === true;
   const isStreaming = stream === true;
-  const text = typeof message === "string" ? message.trim() : "";
-  if (!text) {
-    return Response.json({ error: "message is required" }, { status: 400 });
+  const rawImageUrl =
+    typeof imageUrl === "string" &&
+    (imageUrl.trim().startsWith("data:image/") || imageUrl.trim().startsWith("http"))
+      ? imageUrl.trim()
+      : null;
+  let text = typeof message === "string" ? message.trim() : "";
+  if (!text && rawImageUrl) {
+    text = "Analyze this image in detail.";
+  }
+  if (!text && !rawImageUrl) {
+    return Response.json({ error: "message or image is required" }, { status: 400 });
   }
 
   // Resolve or create the active session.
@@ -229,12 +239,20 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
   // Persist the user message.
   const userRow = db
     .insert(messages)
-    .values({ sessionId: active.id, role: "user", content: text })
+    .values({ sessionId: active.id, role: "user", content: text, imageUrl: rawImageUrl })
     .returning()
     .get();
   if (!userRow) {
     return Response.json({ error: "could not save the message" }, { status: 500 });
   }
+
+  const isVision = Boolean(rawImageUrl);
+  const currentUserContent = rawImageUrl
+    ? [
+        { type: "text" as const, text },
+        { type: "image_url" as const, image_url: { url: rawImageUrl } },
+      ]
+    : text;
 
   const activePrompt = isOnboarding ? ONBOARDING_SYSTEM_PROMPT : SYSTEM_PROMPT;
 
@@ -252,11 +270,14 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
         let sources: EnvelopeSource[] = [];
 
         try {
-          const streamGen = streamModel([
-            { role: "system", content: systemInstruction },
-            ...history,
-            { role: "user", content: text },
-          ]);
+          const streamGen = streamModel(
+            [
+              { role: "system", content: systemInstruction },
+              ...history,
+              { role: "user", content: currentUserContent },
+            ],
+            { isVision },
+          );
 
           for await (const chunk of streamGen) {
             if (!headerParsed) {
@@ -313,7 +334,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
 
             void extractMemories({
               sessionId: active.id,
-              userMessage: text,
+              userMessage: rawImageUrl ? `${text} [User shared an image for visual analysis]` : text,
               assistantReply: cleanReply,
             }).catch((err) => {
               console.error("[memory] extraction skipped:", err);
@@ -355,7 +376,8 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
     const { envelope } = await answerWithEnvelope({
       system: activePrompt + memoryBlock + forgetBlock + repetitionBlock + (isOnboarding ? "" : continuityContext),
       history,
-      userMessage: text,
+      userMessage: currentUserContent,
+      isVision,
     });
     const assistantRow = db
       .insert(messages)
@@ -379,7 +401,7 @@ RULE: Do NOT invent or fabricate any prior topics, yesterday's work, or fake con
 
     void extractMemories({
       sessionId: active.id,
-      userMessage: text,
+      userMessage: rawImageUrl ? `${text} [User shared an image for visual analysis]` : text,
       assistantReply: envelope.answer,
     }).catch((err: unknown) => {
       console.error(

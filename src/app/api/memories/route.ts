@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db, sqlite } from "@/lib/db";
 import { memories, sessions } from "@/lib/schema";
+import { upsertMemoryVector, deleteMemoryVector } from "@/lib/vectorSearch";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
   const info = insertMemory.run(text, targetSessionId, now);
   const newId = Number(info.lastInsertRowid);
   insertFts.run(newId, text);
+  upsertMemoryVector(newId, text);
 
   return Response.json({
     success: true,
@@ -115,6 +117,7 @@ export function DELETE(req: Request) {
 
   sqlite.prepare("DELETE FROM memories_fts WHERE rowid = ?").run(id);
   sqlite.prepare("DELETE FROM memories WHERE id = ?").run(id);
+  deleteMemoryVector(id);
 
   return Response.json({ success: true, deletedId: id });
 }

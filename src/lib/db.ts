@@ -35,6 +35,7 @@ sqlite.exec(`
     session_id  INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     role        TEXT    NOT NULL CHECK (role IN ('user', 'assistant')),
     content     TEXT    NOT NULL,
+    image_url   TEXT,
     created_at  INTEGER NOT NULL
   );
 
@@ -57,5 +58,10 @@ sqlite.exec(`
     value TEXT NOT NULL
   );
 `);
+
+// Safe migration for existing SQLite databases
+try {
+  sqlite.exec(`ALTER TABLE messages ADD COLUMN image_url TEXT;`);
+} catch {}
 
 export const db = drizzle(sqlite, { schema });

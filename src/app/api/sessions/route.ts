@@ -19,6 +19,7 @@ function toWireMessage(row: MessageRow) {
     id: row.id,
     role: row.role,
     content: row.content,
+    imageUrl: row.imageUrl ?? undefined,
     createdAt: row.createdAt.toISOString(),
   };
 }

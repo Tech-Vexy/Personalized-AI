@@ -1,5 +1,11 @@
 import { sqlite } from "./db";
 import { callModel } from "./llm";
+import {
+  upsertMemoryVector,
+  deleteMemoryVector,
+  searchSimilarMemories,
+  fuseRRF,
+} from "./vectorSearch";
 
 /**
  * The kernel's memory module (spec.md > Components > Recall engine):
@@ -158,6 +164,7 @@ export function forgetMemoriesMatching(topic: string): {
   for (const r of rows) {
     deleteFts.run(r.id);
     deleteMem.run(r.id);
+    deleteMemoryVector(r.id);
     contents.push(r.content);
   }
 
@@ -205,41 +212,47 @@ export function recallMemories(
   }
 
   const words = keywordsFrom(userMessage);
-  if (words.length === 0) return [];
 
-  // Use prefix wildcard matching for root-word / inflection support
-  const match = words.map((w) => `"${w}"*`).join(" OR ");
-  const rows = sqlite
-    .prepare(
-      `SELECT m.id          AS memoryId,
-              m.content     AS content,
-              m.source_session_id AS sessionId,
-              s.created_at  AS createdAt,
-              bm25(memories_fts) AS rank
-       FROM memories_fts
-       JOIN memories m ON m.id = memories_fts.rowid
-       JOIN sessions s ON s.id = m.source_session_id
-       WHERE memories_fts MATCH ?
-       ORDER BY rank
-       LIMIT 8`,
-    )
-    .all(match) as Array<{
+  // 1. Lexical BM25 search over FTS5 (if keywords exist)
+  let bm25Rows: Array<{
     memoryId: number;
     content: string;
     sessionId: number;
     createdAt: number;
     rank: number;
-  }>;
+  }> = [];
 
-  return rows
-    .filter((r) => r.rank <= BM25_FLOOR && r.sessionId !== excludeSessionId)
-    .map((r) => ({
-      memoryId: r.memoryId,
-      sessionId: r.sessionId,
-      date: new Date(r.createdAt).toISOString().slice(0, 10),
-      content: r.content,
-      rank: r.rank,
-    }));
+  if (words.length > 0) {
+    const match = words.map((w) => `"${w}"*`).join(" OR ");
+    try {
+      bm25Rows = sqlite
+        .prepare(
+          `SELECT m.id          AS memoryId,
+                  m.content     AS content,
+                  m.source_session_id AS sessionId,
+                  s.created_at  AS createdAt,
+                  bm25(memories_fts) AS rank
+           FROM memories_fts
+           JOIN memories m ON m.id = memories_fts.rowid
+           JOIN sessions s ON s.id = m.source_session_id
+           WHERE memories_fts MATCH ?
+           ORDER BY rank
+           LIMIT 8`,
+        )
+        .all(match) as typeof bm25Rows;
+    } catch {}
+  }
+
+  const bm25Matches = bm25Rows.filter(
+    (r) => r.rank <= BM25_FLOOR && r.sessionId !== excludeSessionId,
+  );
+
+  // 2. Dense Semantic Vector Similarity Search
+  const vectorMatches = searchSimilarMemories(userMessage, excludeSessionId, 8);
+
+  // 3. Reciprocal Rank Fusion (Hybrid search combination)
+  const fused = fuseRRF(bm25Matches, vectorMatches);
+  return fused.slice(0, 6);
 }
 
 /**
@@ -270,6 +283,7 @@ Your sole job is to distill durable, long-term knowledge about the USER from the
 WHAT CAN BE REMEMBERED (Durable facts about the USER):
 - User Identity & Background: Name, profession, location, expertise, affiliations.
 - Projects & Systems: Products they are building, codebases, architectural decisions, technical choices.
+- Visual Artifacts & Designs: When analyzing user-provided images, diagrams, mockups, or screenshots, capture what the user's diagram, architecture, or design portrays (e.g. "User's system diagram uses SQLite with FTS5 and an embedded replica").
 - Durable Preferences & Working Style: Tone preferences, how they like answers structured, persistent technical biases.
 - Life Facts & Constraints: Milestones, recurring commitments, plans, constraints, deadlines.
 - Explicit Directives: Anything the user explicitly asked to remember ("Remember that...", "Note down that...").
@@ -365,16 +379,19 @@ export async function extractMemories(params: {
 
     if (isRedundant) continue;
 
-    // Eradicate outdated stale record from store and search index
+    // Eradicate outdated stale record from store, search index, and vector index
     if (supersededId) {
       sqlite.prepare("DELETE FROM memories_fts WHERE rowid = ?").run(supersededId);
       sqlite.prepare("DELETE FROM memories WHERE id = ?").run(supersededId);
+      deleteMemoryVector(supersededId);
     }
 
     const info = insertMemory.run(content, params.sessionId, Date.now());
-    insertFts.run(Number(info.lastInsertRowid), content);
+    const newId = Number(info.lastInsertRowid);
+    insertFts.run(newId, content);
+    upsertMemoryVector(newId, content);
     written.push(content);
-    existingRows.push({ id: Number(info.lastInsertRowid), content });
+    existingRows.push({ id: newId, content });
   }
 
   return written;
